@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+﻿# Curated Music To-do app
 
-## Getting Started
+Curated Music To-do is your personal hub to keep up with new tracks and albums coming from trusted curators. The app mirrors a shadcn-inspired design system, works great on mobile as a PWA, and keeps your filters and likes in sync across every section.
 
-First, run the development server:
+## Features
+
+- **Hierarchical filters** – switch between playlists and albums without losing your time window, curator, or visibility preferences.
+- **Opensheet-driven data** – tracks and releases load directly from the shared Google Sheets via Opensheet JSON endpoints.
+- **Like history (v2)** – mark songs and albums you love; the app keeps an audit trail so you can revisit active and archived favourites.
+- **PWA ready** – installable experience with an offline fallback, manifest, and generated icons.
+- **Font Awesome kit** – icons load through the provided kit for a consistent visual language.
+
+## Data sources
+
+- Playlists: `https://opensheet.elk.sh/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/all_tracks`
+- Albums: `https://opensheet.elk.sh/1LOx-C1USXeC92Mtv0u6NizEvcTMWkKJNGiNTwAtSj3E/2`
+
+## Getting started
+
+Install dependencies (if you have not already):
+
+```bash
+npm install
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app will be available at [http://localhost:3000](http://localhost:3000). Service worker registration is disabled in development by default; build for production to test PWA behaviour.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Create an optimized production build:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm run start
+```
 
-## Learn More
+## Project structure highlights
 
-To learn more about Next.js, take a look at the following resources:
+- `app/` – Next.js App Router pages (`/`, `/playlists`, `/albums`, `/history`, `/offline`).
+- `components/` – UI primitives and domain views (filters, playlists, albums, overview, history).
+- `lib/` – Data fetching helpers, filter utilities, and shared helpers.
+- `public/manifest.webmanifest` – PWA manifest plus generated icons in multiple sizes.
+- `next.config.ts` – Next.js configuration wrapped with `next-pwa` for offline support.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Linting
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run ESLint to verify the project state:
 
-## Deploy on Vercel
+```bash
+npm run lint
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Linting runs cleanly after the changes in this version.
