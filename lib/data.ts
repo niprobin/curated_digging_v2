@@ -59,14 +59,25 @@ type RawAlbumEntry = {
   liked?: string;
 };
 
-export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
-  const response = await fetch(PLAYLIST_URL, {
-    next: { revalidate: 60 * 30 },
-  });
-  if (!response.ok) {
-    throw new Error("Failed to load playlist data");
+async function fetchJson<T>(url: string, label: string): Promise<T | null> {
+  try {
+    const response = await fetch(url, {
+      next: { revalidate: 60 * 30 },
+    });
+    if (!response.ok) {
+      console.warn(`[data] ${label} responded with ${response.status}`);
+      return null;
+    }
+    return (await response.json()) as T;
+  } catch (error) {
+    console.warn(`[data] Failed to fetch ${label}`, error);
+    return null;
   }
-  const data = (await response.json()) as RawPlaylistEntry[];
+}
+
+export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
+  const data = await fetchJson<RawPlaylistEntry[]>(PLAYLIST_URL, "playlists");
+  if (!data) return [];
   const occurrences = new Map<string, number>();
   return data
     .map((item, index) => {
@@ -95,13 +106,8 @@ export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
 }
 
 export async function getAlbumEntries(): Promise<AlbumEntry[]> {
-  const response = await fetch(ALBUM_URL, {
-    next: { revalidate: 60 * 30 },
-  });
-  if (!response.ok) {
-    throw new Error("Failed to load album data");
-  }
-  const data = (await response.json()) as RawAlbumEntry[];
+  const data = await fetchJson<RawAlbumEntry[]>(ALBUM_URL, "albums");
+  if (!data) return [];
   const occurrences = new Map<string, number>();
   return data
     .map((item, index) => {
