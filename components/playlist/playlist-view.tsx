@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
-import { LikeableItem, useLikedHistory } from "@/components/history/history-provider";
+import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
 import { formatRelativeDate } from "@/lib/utils";
 import type { PlaylistEntry } from "@/lib/data";
@@ -58,7 +58,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const {
     state: { timeWindow, curator, hideChecked, showLikedOnly },
   } = useFilters();
-  const { isLiked, like, unlike } = useLikedHistory();
+  const { isLiked } = useLikedHistory();
   const [localCheckedIds, setLocalCheckedIds] = React.useState<Set<string>>(() => new Set());
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
@@ -87,21 +87,6 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       return true;
     });
   }, [entries, hideChecked, curator, timeWindow, showLikedOnly, isLiked, localCheckedIds]);
-
-  const handleLike = (entry: PlaylistEntry, liked: boolean) => {
-    const item: LikeableItem = {
-      id: entry.id,
-      type: "track",
-      title: entry.track,
-      subtitle: entry.artist,
-      url: entry.spotifyUrl,
-    };
-    if (liked) {
-      like(item, entry.liked);
-    } else {
-      unlike(entry.id, entry.liked);
-    }
-  };
 
   const closeDrawer = React.useCallback(() => {
     setDrawerEntry(null);
@@ -199,11 +184,10 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
         <div className="grid gap-4 md:grid-cols-2">
           {filtered.map((entry) => {
             const isChecked = entry.checked || localCheckedIds.has(entry.id);
-            const liked = isLiked(entry.id, entry.liked) || entry.liked;
             return (
               <Card key={entry.id} className="flex flex-col">
                 <CardHeader className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
                       <CardTitle className="text-xl font-semibold">{entry.track}</CardTitle>
                       <CardDescription className="flex flex-col text-sm text-muted-foreground">
@@ -211,7 +195,13 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
                       </CardDescription>
                     </div>
-                    <Badge variant="secondary">{entry.curator}</Badge>
+                    <div className="flex items-start gap-2">
+                      <Badge variant="secondary">{entry.curator}</Badge>
+                      <Button variant="ghost" size="icon" className="text-muted-foreground">
+                        <i className="fa-solid fa-xmark" aria-hidden />
+                        <span className="sr-only">Close</span>
+                      </Button>
+                    </div>
                   </div>
                   {isChecked && (
                     <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
@@ -219,48 +209,27 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                     </Badge>
                   )}
                 </CardHeader>
-                <CardContent className="mt-auto flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <i
-                      className={liked ? "fa-solid fa-heart text-rose-500" : "fa-regular fa-heart"}
-                      aria-hidden
-                    />
-                    <span>{liked ? "In your liked queue" : "Not liked yet"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setDrawerEntry(entry);
-                        setSelectedPlaylist(null);
-                        setSubmitError(null);
-                      }}
-                    >
-                      <i className="fa-solid fa-plus" aria-hidden />
-                      <span className="sr-only">Add to playlist</span>
+                <CardContent className="mt-auto flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDrawerEntry(entry);
+                      setSelectedPlaylist(null);
+                      setSubmitError(null);
+                    }}
+                  >
+                    <i className="fa-solid fa-plus" aria-hidden />
+                    <span className="sr-only">Add to playlist</span>
+                  </Button>
+                  {entry.spotifyUrl && (
+                    <Button asChild size="sm" variant="secondary">
+                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-spotify" aria-hidden />
+                        Open
+                      </a>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-pressed={liked}
-                      onClick={() => handleLike(entry, !liked)}
-                    >
-                      <i
-                        className={liked ? "fa-solid fa-heart text-rose-500" : "fa-regular fa-heart"}
-                        aria-hidden
-                      />
-                      <span className="sr-only">Toggle like</span>
-                    </Button>
-                    {entry.spotifyUrl && (
-                      <Button asChild size="sm" variant="secondary">
-                        <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                          <i className="fa-brands fa-spotify" aria-hidden />
-                          Open
-                        </a>
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             );
