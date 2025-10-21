@@ -143,6 +143,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
         body: JSON.stringify({
           spotify_id: spotifyId,
           playlist: selectedPlaylist,
+          checked: "TRUE",
+          liked: "TRUE",
         }),
       });
       if (!response.ok) {
