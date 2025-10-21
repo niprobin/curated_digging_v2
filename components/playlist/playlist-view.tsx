@@ -59,6 +59,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     state: { timeWindow, curator, hideChecked, showLikedOnly },
   } = useFilters();
   const { isLiked, like, unlike } = useLikedHistory();
+  const [localCheckedIds, setLocalCheckedIds] = React.useState<Set<string>>(() => new Set());
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -69,7 +70,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
-      if (hideChecked && entry.checked) {
+      const isChecked = entry.checked || localCheckedIds.has(entry.id);
+      if (hideChecked && isChecked) {
         return false;
       }
       if (curator && entry.curator !== curator) {
@@ -84,7 +86,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       }
       return true;
     });
-  }, [entries, hideChecked, curator, timeWindow, showLikedOnly, isLiked]);
+  }, [entries, hideChecked, curator, timeWindow, showLikedOnly, isLiked, localCheckedIds]);
 
   const handleLike = (entry: PlaylistEntry, liked: boolean) => {
     const item: LikeableItem = {
@@ -147,14 +149,19 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           liked: "TRUE",
         }),
       });
-      if (!response.ok) {
-        throw new Error(`Webhook returned ${response.status}`);
-      }
-      setFeedback({
-        type: "success",
-        message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
-      });
-      closeDrawer();
+        if (!response.ok) {
+          throw new Error(`Webhook returned ${response.status}`);
+        }
+        setLocalCheckedIds((prev) => {
+          const next = new Set(prev);
+          next.add(drawerEntry.id);
+          return next;
+        });
+        setFeedback({
+          type: "success",
+          message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
+        });
+        closeDrawer();
     } catch (error) {
       console.error("Failed to trigger playlist webhook", error);
       setSubmitError("Could not reach the playlist webhook. Please try again.");
@@ -191,6 +198,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {filtered.map((entry) => {
+            const isChecked = entry.checked || localCheckedIds.has(entry.id);
             const liked = isLiked(entry.id, entry.liked) || entry.liked;
             return (
               <Card key={entry.id} className="flex flex-col">
@@ -205,7 +213,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                     </div>
                     <Badge variant="secondary">{entry.curator}</Badge>
                   </div>
-                  {entry.checked && (
+                  {isChecked && (
                     <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
                       Already listened
                     </Badge>
