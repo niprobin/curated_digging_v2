@@ -4,7 +4,7 @@ import * as React from "react";
 import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
 import { useLikedHistory } from "@/components/history/history-provider";
@@ -188,49 +188,52 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
               <Card key={entry.id} className="flex flex-col">
                 <CardHeader className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <CardTitle className="text-xl font-semibold">{entry.track}</CardTitle>
-                      <CardDescription className="flex flex-col text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">{entry.artist}</span>
-                        <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
-                      </CardDescription>
+                    <div className="flex flex-1 flex-col gap-2">
+                      <CardTitle className="text-xl font-semibold text-foreground">{entry.track}</CardTitle>
+                      <Badge variant="secondary" className="w-fit">
+                        {entry.curator}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground capitalize">
+                        Added {formatRelativeDate(entry.addedAt)}
+                      </span>
+                      {isChecked && (
+                        <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
+                          Already listened
+                        </Badge>
+                      )}
                     </div>
-                    <div className="flex items-start gap-2">
-                      <Badge variant="secondary">{entry.curator}</Badge>
+                    <div className="flex flex-col items-end gap-2">
                       <Button variant="ghost" size="icon" className="text-muted-foreground">
                         <i className="fa-solid fa-xmark" aria-hidden />
                         <span className="sr-only">Close</span>
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setDrawerEntry(entry);
+                          setSelectedPlaylist(null);
+                          setSubmitError(null);
+                        }}
+                      >
+                        <i className="fa-solid fa-plus" aria-hidden />
+                        <span className="sr-only">Add to playlist</span>
+                      </Button>
+                      {entry.spotifyUrl && (
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          onClick={() => {
+                            window.open(entry.spotifyUrl, "_blank", "noopener,noreferrer");
+                          }}
+                        >
+                          <i className="fa-brands fa-spotify" aria-hidden />
+                          <span className="sr-only">Open in Spotify</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  {isChecked && (
-                    <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
-                      Already listened
-                    </Badge>
-                  )}
                 </CardHeader>
-                <CardContent className="mt-auto flex items-center justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setDrawerEntry(entry);
-                      setSelectedPlaylist(null);
-                      setSubmitError(null);
-                    }}
-                  >
-                    <i className="fa-solid fa-plus" aria-hidden />
-                    <span className="sr-only">Add to playlist</span>
-                  </Button>
-                  {entry.spotifyUrl && (
-                    <Button asChild size="sm" variant="secondary">
-                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                        <i className="fa-brands fa-spotify" aria-hidden />
-                        Open
-                      </a>
-                    </Button>
-                  )}
-                </CardContent>
               </Card>
             );
           })}
