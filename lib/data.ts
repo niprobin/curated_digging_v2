@@ -24,6 +24,7 @@ export interface PlaylistEntry {
   addedAt: Date;
   checked: boolean;
   liked: boolean;
+  spotifyId?: string;
   spotifyUrl?: string;
 }
 
@@ -86,6 +87,7 @@ export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
         addedAt,
         checked: toBoolean(item.checked),
         liked: toBoolean(item.liked),
+        spotifyId,
         spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : undefined,
       } satisfies PlaylistEntry;
     })

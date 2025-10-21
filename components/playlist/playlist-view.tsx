@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
+import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,11 +17,55 @@ interface PlaylistViewProps {
   curators: string[];
 }
 
+const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/add-to-playlist";
+
+const PLAYLIST_OPTIONS = [
+  "Afrobeat & Highlife",
+  "Beats",
+  "Bossa Nova",
+  "Brazilian Music",
+  "Disco Dancefloor",
+  "DNB",
+  "Downtempo Trip-hop",
+  "Funk & Rock",
+  "Hip-hop",
+  "House Chill",
+  "House Dancefloor",
+  "Jazz Classic",
+  "Jazz Funk",
+  "Latin Music",
+  "Morning Chill",
+  "Neo Soul",
+  "Reggae",
+  "RNB Mood",
+  "Soul Oldies",
+] as const;
+
+type PlaylistOption = (typeof PLAYLIST_OPTIONS)[number];
+
+function extractSpotifyId(entry: PlaylistEntry) {
+  if (entry.spotifyId) return entry.spotifyId;
+  if (entry.spotifyUrl) {
+    const match = entry.spotifyUrl.split("/track/")[1];
+    if (match) {
+      return match.split("?")[0];
+    }
+  }
+  return undefined;
+}
+
 export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const {
     state: { timeWindow, curator, hideChecked, showLikedOnly },
   } = useFilters();
   const { isLiked, like, unlike } = useLikedHistory();
+  const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; message: string } | null>(
+    null,
+  );
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
@@ -56,6 +101,65 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     }
   };
 
+  const closeDrawer = React.useCallback(() => {
+    setDrawerEntry(null);
+    setSelectedPlaylist(null);
+    setSubmitError(null);
+    setIsSubmitting(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!drawerEntry) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDrawer();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [drawerEntry, closeDrawer]);
+
+  React.useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+
+  const handleAddToPlaylist = async () => {
+    if (!drawerEntry || !selectedPlaylist) return;
+    const spotifyId = extractSpotifyId(drawerEntry);
+    if (!spotifyId) {
+      setSubmitError("Missing Spotify ID for this track.");
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          spotify_id: spotifyId,
+          playlist: selectedPlaylist,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
+      }
+      setFeedback({
+        type: "success",
+        message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
+      });
+      closeDrawer();
+    } catch (error) {
+      console.error("Failed to trigger playlist webhook", error);
+      setSubmitError("Could not reach the playlist webhook. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <FilterToolbar
@@ -65,6 +169,19 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           /* noop - handled through context */
         }}
       />
+      {feedback && (
+        <div
+          className={clsx(
+            "rounded-md border p-3 text-sm",
+            feedback.type === "success"
+              ? "border-emerald-300/60 bg-emerald-50 text-emerald-900"
+              : "border-rose-300/60 bg-rose-50 text-rose-900",
+          )}
+          role="status"
+        >
+          {feedback.message}
+        </div>
+      )}
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
           Nothing to show. Adjust your filters or check back later.
@@ -78,9 +195,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                 <CardHeader className="flex flex-col gap-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <CardTitle className="text-xl font-semibold">
-                        {entry.track}
-                      </CardTitle>
+                      <CardTitle className="text-xl font-semibold">{entry.track}</CardTitle>
                       <CardDescription className="flex flex-col text-sm text-muted-foreground">
                         <span className="font-medium text-foreground">{entry.artist}</span>
                         <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
@@ -106,6 +221,18 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => {
+                        setDrawerEntry(entry);
+                        setSelectedPlaylist(null);
+                        setSubmitError(null);
+                      }}
+                    >
+                      <i className="fa-solid fa-plus" aria-hidden />
+                      <span className="sr-only">Add to playlist</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       aria-pressed={liked}
                       onClick={() => handleLike(entry, !liked)}
                     >
@@ -128,6 +255,79 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
               </Card>
             );
           })}
+        </div>
+      )}
+      {drawerEntry && (
+        <div className="fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={closeDrawer}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-to-playlist-title"
+            className="relative ml-auto flex h-full w-full max-w-md flex-col gap-6 bg-background p-6 shadow-xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="add-to-playlist-title" className="text-xl font-semibold">
+                  Add to playlist
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {drawerEntry.track}
+                  <span className="px-2 text-muted-foreground">-</span>
+                  {drawerEntry.artist}
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeDrawer}>
+                <i className="fa-solid fa-xmark" aria-hidden />
+                <span className="sr-only">Close</span>
+              </Button>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Select a playlist</p>
+              <div className="grid max-h-[60vh] gap-2 overflow-y-auto pr-1">
+                {PLAYLIST_OPTIONS.map((option) => {
+                  const selected = selectedPlaylist === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setSelectedPlaylist(option)}
+                      className={clsx(
+                        "flex w-full items-center justify-between rounded-md border p-3 text-left text-sm transition",
+                        selected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card/60 hover:border-primary/60 hover:bg-card",
+                      )}
+                    >
+                      <span className="font-medium">{option.trim()}</span>
+                      {selected ? (
+                        <i className="fa-solid fa-circle-check text-primary-foreground" aria-hidden />
+                      ) : (
+                        <i className="fa-regular fa-circle" aria-hidden />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {submitError && (
+              <p className="rounded-md border border-rose-300/60 bg-rose-50 p-2 text-sm text-rose-900">
+                {submitError}
+              </p>
+            )}
+            <div className="mt-auto flex items-center justify-end gap-2 border-t border-border/60 pt-4">
+              <Button variant="ghost" onClick={closeDrawer}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddToPlaylist} disabled={!selectedPlaylist || isSubmitting}>
+                {isSubmitting ? "Adding..." : "Add to playlist"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
