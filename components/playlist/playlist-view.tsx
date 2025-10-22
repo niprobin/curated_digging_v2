@@ -18,6 +18,7 @@ interface PlaylistViewProps {
 }
 
 const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/add-to-playlist";
+const TRACK_CHECK_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/track-checked";
 
 const PLAYLIST_OPTIONS = [
   "Afrobeat & Highlife",
@@ -67,9 +68,14 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const [feedback, setFeedback] = React.useState<{ type: "success" | "error"; message: string } | null>(
     null,
   );
+  const [dismissSubmitting, setDismissSubmitting] = React.useState<Set<string>>(() => new Set());
+  const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
+      if (dismissedIds.has(entry.id)) {
+        return false;
+      }
       const isChecked = entry.checked || localCheckedIds.has(entry.id);
       if (hideChecked && isChecked) {
         return false;
@@ -86,7 +92,16 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       }
       return true;
     });
-  }, [entries, hideChecked, curator, timeWindow, showLikedOnly, isLiked, localCheckedIds]);
+  }, [
+    entries,
+    hideChecked,
+    curator,
+    timeWindow,
+    showLikedOnly,
+    isLiked,
+    localCheckedIds,
+    dismissedIds,
+  ]);
 
   const closeDrawer = React.useCallback(() => {
     setDrawerEntry(null);
@@ -154,6 +169,63 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     }
   };
 
+  const handleDismiss = async (entry: PlaylistEntry) => {
+    const spotifyId = extractSpotifyId(entry);
+    if (!spotifyId) {
+      setFeedback({
+        type: "error",
+        message: "Missing Spotify ID for this track.",
+      });
+      return;
+    }
+    setDismissSubmitting((prev) => {
+      const next = new Set(prev);
+      next.add(entry.id);
+      return next;
+    });
+    try {
+      const response = await fetch(TRACK_CHECK_WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          spotify_id: spotifyId,
+          checked: "TRUE",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
+      }
+      setLocalCheckedIds((prev) => {
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+      setFeedback({
+        type: "success",
+        message: `Marked "${entry.track}" as checked.`,
+      });
+    } catch (error) {
+      console.error("Failed to trigger track checked webhook", error);
+      setFeedback({
+        type: "error",
+        message: "Could not mark this track as checked. Please try again.",
+      });
+    } finally {
+      setDismissSubmitting((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <FilterToolbar
@@ -183,7 +255,11 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {filtered.map((entry) => {
+            if (dismissedIds.has(entry.id)) {
+              return null;
+            }
             const isChecked = entry.checked || localCheckedIds.has(entry.id);
+            const isDismissLoading = dismissSubmitting.has(entry.id);
             return (
               <Card key={entry.id} className="flex flex-col">
                 <CardHeader className="flex flex-col gap-4">
@@ -203,7 +279,13 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <Button variant="ghost" size="icon" className="text-muted-foreground">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground"
+                        onClick={() => handleDismiss(entry)}
+                        disabled={isDismissLoading}
+                      >
                         <i className="fa-solid fa-xmark" aria-hidden />
                         <span className="sr-only">Close</span>
                       </Button>
@@ -220,15 +302,11 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         <span className="sr-only">Add to playlist</span>
                       </Button>
                       {entry.spotifyUrl && (
-                        <Button
-                          variant="secondary"
-                          size="icon"
-                          onClick={() => {
-                            window.open(entry.spotifyUrl, "_blank", "noopener,noreferrer");
-                          }}
-                        >
-                          <i className="fa-brands fa-spotify" aria-hidden />
-                          <span className="sr-only">Open in Spotify</span>
+                        <Button asChild variant="secondary" size="icon">
+                          <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
+                            <i className="fa-brands fa-spotify" aria-hidden />
+                            <span className="sr-only">Open in Spotify</span>
+                          </a>
                         </Button>
                       )}
                     </div>
