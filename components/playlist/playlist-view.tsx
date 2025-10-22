@@ -266,6 +266,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-1 flex-col gap-2">
                       <CardTitle className="text-xl font-semibold text-foreground">{entry.track}</CardTitle>
+                      <span className="text-sm font-medium text-foreground">{entry.artist}</span>
                       <Badge variant="secondary" className="w-fit">
                         {entry.curator}
                       </Badge>
