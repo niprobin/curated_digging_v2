@@ -144,7 +144,6 @@ export function AlbumView({ entries }: AlbumViewProps) {
       if (!alreadyLiked) {
         handleLike(entry, true);
       }
-      setDismissedIds((prev) => new Set(prev).add(entry.id));
     } catch (err) {
       console.error("Failed to send album rating webhook", err);
     } finally {
@@ -290,8 +289,23 @@ export function AlbumView({ entries }: AlbumViewProps) {
                     </div>
                   </div>
                   {(rating || liked) && (
-                    <div className="text-sm text-muted-foreground">
-                      {rating ? `Rated ${rating}/5` : "You like this"}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      {rating ? (
+                        <>
+                          <span className="flex items-center gap-0.5 text-foreground">
+                            {[1, 2, 3, 4, 5].map((v) => (
+                              <i
+                                key={v}
+                                className={v <= rating ? "fa-solid fa-star" : "fa-regular fa-star"}
+                                aria-hidden
+                              />
+                            ))}
+                          </span>
+                          <span className="ml-1">{rating}/5</span>
+                        </>
+                      ) : (
+                        <span>You like this</span>
+                      )}
                     </div>
                   )}
                 </CardHeader>

@@ -1,5 +1,6 @@
 import { HistoryView } from "@/components/history/history-view";
 import { getAlbumEntries, getPlaylistEntries } from "@/lib/data";
+import { RefreshButton } from "@/components/refresh/refresh-button";
 
 export default async function HistoryPage() {
   const [tracks, albums] = await Promise.all([getPlaylistEntries(), getAlbumEntries()]);
@@ -12,9 +13,11 @@ export default async function HistoryPage() {
         <p className="text-sm text-muted-foreground">
           Your saved songs and albums pulled directly from source data.
         </p>
+        <div>
+          <RefreshButton tags={["playlists", "albums"]} />
+        </div>
       </header>
       <HistoryView likedTracks={likedTracks} likedAlbums={likedAlbums} />
     </section>
   );
 }
-

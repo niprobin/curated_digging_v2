@@ -4,11 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-interface RefreshButtonProps {
-  tag: "playlists" | "albums";
-}
+type Tag = "playlists" | "albums";
 
-export function RefreshButton({ tag }: RefreshButtonProps) {
+type RefreshButtonProps =
+  | { tag: Tag; tags?: never }
+  | { tags: Tag[]; tag?: never };
+
+export function RefreshButton(props: RefreshButtonProps) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
@@ -17,13 +19,17 @@ export function RefreshButton({ tag }: RefreshButtonProps) {
     setError(null);
     startTransition(async () => {
       try {
-        const res = await fetch("/api/revalidate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tag }),
-        });
-        if (!res.ok) {
-          throw new Error(`Revalidate failed (${res.status})`);
+        const tags = 'tag' in props ? [props.tag] : props.tags;
+        if (!tags || tags.length === 0) throw new Error("Missing tags");
+        for (const t of tags) {
+          const res = await fetch("/api/revalidate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tag: t }),
+          });
+          if (!res.ok) {
+            throw new Error(`Revalidate failed (${res.status})`);
+          }
         }
         router.refresh();
       } catch (e) {
@@ -42,4 +48,3 @@ export function RefreshButton({ tag }: RefreshButtonProps) {
     </div>
   );
 }
-
