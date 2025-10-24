@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import * as React from "react";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
@@ -122,21 +123,38 @@ export function AlbumView({ entries }: AlbumViewProps) {
               <Card key={entry.id} className="flex flex-col">
                 <CardHeader className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex flex-1 flex-col gap-2">
-                      <CardTitle className="text-xl font-semibold text-foreground">{entry.name}</CardTitle>
-                      {entry.releaseDate && (
-                        <span className="text-sm text-muted-foreground">
-                          Released <span className="font-medium text-foreground">{entry.releaseDate}</span>
+                    <div className="flex flex-1 items-start gap-4">
+                      {entry.coverUrl ? (
+                        <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md md:h-24 md:w-24">
+                          <Image
+                            src={entry.coverUrl}
+                            alt={`Artwork for ${entry.name}`}
+                            fill
+                            className="object-cover"
+                            sizes="96px"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground md:h-24 md:w-24">
+                          <i className="fa-solid fa-compact-disc text-xl" aria-hidden />
+                        </div>
+                      )}
+                      <div className="flex flex-1 flex-col gap-2">
+                        <CardTitle className="text-xl font-semibold text-foreground">{entry.name}</CardTitle>
+                        {entry.releaseDate && (
+                          <span className="text-sm text-muted-foreground">
+                            Released <span className="font-medium text-foreground">{entry.releaseDate}</span>
+                          </span>
+                        )}
+                        <span className="text-sm text-muted-foreground capitalize">
+                          Added {formatRelativeDate(entry.addedAt)}
                         </span>
-                      )}
-                      <span className="text-sm text-muted-foreground capitalize">
-                        Added {formatRelativeDate(entry.addedAt)}
-                      </span>
-                      {entry.checked && (
-                        <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
-                          Already listened
-                        </Badge>
-                      )}
+                        {entry.checked && (
+                          <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
+                            Already listened
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="relative flex flex-col items-end gap-2">
                       <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
@@ -191,9 +209,11 @@ export function AlbumView({ entries }: AlbumViewProps) {
                       )}
                     </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {rating ? `Rated ${rating}/5` : liked ? "You like this" : "Tap the heart to rate"}
-                  </div>
+                  {(rating || liked) && (
+                    <div className="text-sm text-muted-foreground">
+                      {rating ? `Rated ${rating}/5` : "You like this"}
+                    </div>
+                  )}
                 </CardHeader>
               </Card>
             );
