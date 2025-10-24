@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
-import { formatRelativeDate, parseSheetDate } from "@/lib/utils";
+import { formatRelativeDate, parseSheetDate, formatOrdinalLongDate } from "@/lib/utils";
 import type { AlbumEntry } from "@/lib/data";
 
 interface AlbumViewProps {
@@ -178,7 +178,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                             Released
                             {" "}
                             <span className="font-medium text-foreground">
-                              {formatRelativeDate(parseSheetDate(entry.releaseDate))}
+                              {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
                             </span>
                           </span>
                         )}

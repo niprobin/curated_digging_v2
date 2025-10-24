@@ -43,3 +43,24 @@ export function parseSheetDate(value: string) {
   }
   return new Date();
 }
+
+export function formatOrdinalLongDate(date: Date) {
+  const day = date.getDate();
+  const month = date.toLocaleString("en-US", { month: "long" });
+  const year = date.getFullYear();
+  const suffix = (() => {
+    const v = day % 100;
+    if (v >= 11 && v <= 13) return "th";
+    switch (day % 10) {
+      case 1:
+        return "st";
+      case 2:
+        return "nd";
+      case 3:
+        return "rd";
+      default:
+        return "th";
+    }
+  })();
+  return `${day}${suffix} ${month} ${year}`;
+}
