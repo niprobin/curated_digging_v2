@@ -1,5 +1,6 @@
 ﻿import { PlaylistView } from "@/components/playlist/playlist-view";
 import { getCurators, getPlaylistEntries } from "@/lib/data";
+import { RefreshButton } from "@/components/refresh/refresh-button";
 
 export const dynamic = "force-static";
 
@@ -14,6 +15,9 @@ export default async function PlaylistsPage() {
         <p className="text-sm text-muted-foreground">
           Browse new additions from your trusted curators. Filters stay with you as you switch views.
         </p>
+        <div>
+          <RefreshButton tag="playlists" />
+        </div>
       </header>
       <PlaylistView entries={entries} curators={curators} />
     </section>

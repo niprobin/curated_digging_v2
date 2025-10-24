@@ -59,10 +59,10 @@ type RawAlbumEntry = {
   liked?: string;
 };
 
-async function fetchJson<T>(url: string, label: string): Promise<T | null> {
+async function fetchJson<T>(url: string, label: string, tag: string): Promise<T | null> {
   try {
     const response = await fetch(url, {
-      next: { revalidate: 60 * 30 },
+      next: { revalidate: 60 * 30, tags: [tag] },
     });
     if (!response.ok) {
       console.warn(`[data] ${label} responded with ${response.status}`);
@@ -76,7 +76,7 @@ async function fetchJson<T>(url: string, label: string): Promise<T | null> {
 }
 
 export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
-  const data = await fetchJson<RawPlaylistEntry[]>(PLAYLIST_URL, "playlists");
+  const data = await fetchJson<RawPlaylistEntry[]>(PLAYLIST_URL, "playlists", "playlists");
   if (!data) return [];
   const occurrences = new Map<string, number>();
   return data
@@ -106,7 +106,7 @@ export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
 }
 
 export async function getAlbumEntries(): Promise<AlbumEntry[]> {
-  const data = await fetchJson<RawAlbumEntry[]>(ALBUM_URL, "albums");
+  const data = await fetchJson<RawAlbumEntry[]>(ALBUM_URL, "albums", "albums");
   if (!data) return [];
   const occurrences = new Map<string, number>();
   return data

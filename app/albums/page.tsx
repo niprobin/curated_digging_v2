@@ -1,4 +1,5 @@
 import { AlbumView } from "@/components/albums/album-view";
+import { RefreshButton } from "@/components/refresh/refresh-button";
 import { getAlbumEntries } from "@/lib/data";
 
 export const dynamic = "force-static";
@@ -13,6 +14,9 @@ export default async function AlbumsPage() {
         <p className="text-sm text-muted-foreground">
           Discover the latest long plays and releases you&apos;ve hand-picked to follow.
         </p>
+        <div>
+          <RefreshButton tag="albums" />
+        </div>
       </header>
       <AlbumView entries={entries} />
     </section>
