@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import * as React from "react";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
@@ -21,6 +20,47 @@ export function AlbumView({ entries }: AlbumViewProps) {
     state: { timeWindow, hideChecked, showLikedOnly },
   } = useFilters();
   const { isLiked, like, unlike } = useLikedHistory();
+
+  // Simple local persistence for album ratings (1-5)
+  const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
+  const [ratings, setRatings] = React.useState<Record<string, number>>({});
+  const [openRatingForId, setOpenRatingForId] = React.useState<string | null>(null);
+  const popoverRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(RATINGS_STORAGE_KEY);
+      if (raw) setRatings(JSON.parse(raw));
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(RATINGS_STORAGE_KEY, JSON.stringify(ratings));
+    } catch (e) {
+      // ignore
+    }
+  }, [ratings]);
+
+  React.useEffect(() => {
+    if (!openRatingForId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenRatingForId(null);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenRatingForId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onClick);
+    };
+  }, [openRatingForId]);
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
@@ -56,6 +96,16 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
+  const setRating = (entry: AlbumEntry, value: number) => {
+    setRatings((prev) => ({ ...prev, [entry.id]: value }));
+    // Consider any rating >=1 as a like
+    const alreadyLiked = isLiked(entry.id, entry.liked) || entry.liked;
+    if (value >= 1 && !alreadyLiked) {
+      handleLike(entry, true);
+    }
+    setOpenRatingForId(null);
+  };
+
   return (
     <div className="space-y-6">
       <FilterToolbar />
@@ -67,74 +117,82 @@ export function AlbumView({ entries }: AlbumViewProps) {
         <div className="grid gap-4 md:grid-cols-2">
           {filtered.map((entry) => {
             const liked = isLiked(entry.id, entry.liked) || entry.liked;
+            const rating = ratings[entry.id] ?? 0;
             return (
-              <Card key={entry.id} className="flex flex-col overflow-hidden">
-                <CardHeader className="flex flex-row gap-4 p-0">
-                  {entry.coverUrl ? (
-                    <div className="relative h-40 w-40 flex-shrink-0 overflow-hidden rounded-none md:h-48 md:w-48">
-                      <Image
-                        src={entry.coverUrl}
-                        alt={`Artwork for ${entry.name}`}
-                        fill
-                        className="object-cover"
-                        sizes="192px"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-40 w-40 items-center justify-center bg-muted text-muted-foreground">
-                      <i className="fa-solid fa-compact-disc text-3xl" aria-hidden />
-                    </div>
-                  )}
-                  <div className="flex flex-1 flex-col gap-3 p-6">
-                    <div className="space-y-1">
-                      <CardTitle className="text-xl font-semibold">{entry.name}</CardTitle>
-                      <CardDescription className="flex flex-col gap-1 text-sm">
-                        {entry.releaseDate && (
-                          <span>
-                            Released <span className="font-medium text-foreground">{entry.releaseDate}</span>
-                          </span>
-                        )}
-                        <span className="capitalize">
-                          Added {formatRelativeDate(entry.addedAt)}
+              <Card key={entry.id} className="flex flex-col">
+                <CardHeader className="flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-1 flex-col gap-2">
+                      <CardTitle className="text-xl font-semibold text-foreground">{entry.name}</CardTitle>
+                      {entry.releaseDate && (
+                        <span className="text-sm text-muted-foreground">
+                          Released <span className="font-medium text-foreground">{entry.releaseDate}</span>
                         </span>
-                      </CardDescription>
+                      )}
+                      <span className="text-sm text-muted-foreground capitalize">
+                        Added {formatRelativeDate(entry.addedAt)}
+                      </span>
+                      {entry.checked && (
+                        <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
+                          Already listened
+                        </Badge>
+                      )}
                     </div>
-                    {entry.checked && (
-                      <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
-                        Already listened
-                      </Badge>
-                    )}
-                    <div className="mt-auto flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <i
-                          className={liked ? "fa-solid fa-heart text-rose-500" : "fa-regular fa-heart"}
-                          aria-hidden
-                        />
-                        <span>{liked ? "You like this" : "Tap to like"}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
+                    <div className="relative flex flex-col items-end gap-2">
+                      <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           aria-pressed={liked}
-                          onClick={() => handleLike(entry, !liked)}
+                          onClick={() => setOpenRatingForId((id) => (id === entry.id ? null : entry.id))}
+                          aria-haspopup="dialog"
+                          aria-expanded={openRatingForId === entry.id}
+                          title={rating ? `Rated ${rating}/5` : "Rate album"}
                         >
                           <i
                             className={liked ? "fa-solid fa-heart text-rose-500" : "fa-regular fa-heart"}
                             aria-hidden
                           />
-                          <span className="sr-only">Toggle album like</span>
+                          <span className="sr-only">Rate album</span>
                         </Button>
-                        {entry.spotifyUrl && (
-                          <Button asChild size="sm" variant="secondary">
-                            <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                              <i className="fa-brands fa-spotify" aria-hidden />
-                              Open
-                            </a>
-                          </Button>
+                        {openRatingForId === entry.id && (
+                          <div
+                            role="dialog"
+                            aria-label="Rate album"
+                            className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-popover p-2 shadow-md"
+                          >
+                            <div className="mb-2 text-xs text-muted-foreground">Rate this album</div>
+                            <div className="flex items-center justify-between">
+                              {[1, 2, 3, 4, 5].map((v) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  onClick={() => setRating(entry, v)}
+                                  className="p-1 text-lg text-foreground hover:text-primary"
+                                  aria-label={`Set rating ${v}`}
+                                >
+                                  <i
+                                    className={v <= (rating || 0) ? "fa-solid fa-star" : "fa-regular fa-star"}
+                                    aria-hidden
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
+                      {entry.spotifyUrl && (
+                        <Button asChild variant="secondary" size="icon">
+                          <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
+                            <i className="fa-brands fa-spotify" aria-hidden />
+                            <span className="sr-only">Open in Spotify</span>
+                          </a>
+                        </Button>
+                      )}
                     </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {rating ? `Rated ${rating}/5` : liked ? "You like this" : "Tap the heart to rate"}
                   </div>
                 </CardHeader>
               </Card>
