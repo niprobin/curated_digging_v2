@@ -1,5 +1,5 @@
-﻿import { OverviewDashboard } from "@/components/overview/overview-dashboard";
-import { getAlbumEntries, getCurators, getPlaylistEntries } from "@/lib/data";
+import { OverviewDashboard } from "@/components/overview/overview-dashboard";
+import { getAlbumEntries, getPlaylistEntries } from "@/lib/data";
 
 export const dynamic = "force-static";
 
@@ -8,7 +8,6 @@ export default async function HomePage() {
     getPlaylistEntries(),
     getAlbumEntries(),
   ]);
-  const curators = getCurators(playlistEntries);
 
   return (
     <section className="space-y-6">
@@ -21,7 +20,7 @@ export default async function HomePage() {
           you move between sections, so your listening queue always feels organised.
         </p>
       </header>
-      <OverviewDashboard playlists={playlistEntries} albums={albumEntries} curators={curators} />
+      <OverviewDashboard playlists={playlistEntries} albums={albumEntries} />
     </section>
   );
 }
