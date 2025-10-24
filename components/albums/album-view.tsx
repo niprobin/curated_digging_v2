@@ -28,6 +28,10 @@ export function AlbumView({ entries }: AlbumViewProps) {
   const [openRatingForId, setOpenRatingForId] = React.useState<string | null>(null);
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
 
+  // Local remove/dismiss state for albums
+  const DISMISSED_STORAGE_KEY = "curated-digging:album-dismissed";
+  const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
+
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(RATINGS_STORAGE_KEY);
@@ -44,6 +48,23 @@ export function AlbumView({ entries }: AlbumViewProps) {
       // ignore
     }
   }, [ratings]);
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DISMISSED_STORAGE_KEY);
+      if (raw) setDismissedIds(new Set<string>(JSON.parse(raw)));
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(Array.from(dismissedIds)));
+    } catch (e) {
+      // ignore
+    }
+  }, [dismissedIds]);
 
   React.useEffect(() => {
     if (!openRatingForId) return;
@@ -65,6 +86,9 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
+      if (dismissedIds.has(entry.id)) {
+        return false;
+      }
       if (hideChecked && entry.checked) {
         return false;
       }
@@ -77,7 +101,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
       }
       return true;
     });
-  }, [entries, hideChecked, timeWindow, showLikedOnly, isLiked]);
+  }, [entries, hideChecked, timeWindow, showLikedOnly, isLiked, dismissedIds]);
 
   const handleLike = (entry: AlbumEntry, liked: boolean) => {
     if (liked) {
@@ -105,6 +129,14 @@ export function AlbumView({ entries }: AlbumViewProps) {
       handleLike(entry, true);
     }
     setOpenRatingForId(null);
+  };
+
+  const handleDismiss = (entry: AlbumEntry) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(entry.id);
+      return next;
+    });
   };
 
   return (
@@ -161,6 +193,15 @@ export function AlbumView({ entries }: AlbumViewProps) {
                       </div>
                     </div>
                     <div className="relative flex flex-col items-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground"
+                        onClick={() => handleDismiss(entry)}
+                      >
+                        <i className="fa-solid fa-xmark" aria-hidden />
+                        <span className="sr-only">Remove</span>
+                      </Button>
                       <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
                         <Button
                           variant="ghost"
