@@ -131,7 +131,15 @@ export async function getAlbumEntries(): Promise<AlbumEntry[]> {
         liked: toBoolean(item.liked),
       } satisfies AlbumEntry;
     })
-    .sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime());
+    .sort((a, b) => {
+      // Primary: by added_date (closest to today -> newest first)
+      const addedCmp = b.addedAt.getTime() - a.addedAt.getTime();
+      if (addedCmp !== 0) return addedCmp;
+      // Secondary: by release_date (closest to today -> newest first)
+      const aRelease = a.releaseDate ? parseSheetDate(a.releaseDate).getTime() : Number.NEGATIVE_INFINITY;
+      const bRelease = b.releaseDate ? parseSheetDate(b.releaseDate).getTime() : Number.NEGATIVE_INFINITY;
+      return bRelease - aRelease;
+    });
 }
 
 export function getCurators(entries: PlaylistEntry[]) {

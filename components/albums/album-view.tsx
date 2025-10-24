@@ -5,7 +5,7 @@ import * as React from "react";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
@@ -22,6 +22,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
   } = useFilters();
   const { isLiked, like, unlike } = useLikedHistory();
   const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
+  const [externalLoading, setExternalLoading] = React.useState<Set<string>>(() => new Set());
 
   // Simple local persistence for album ratings (1-5)
   const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
@@ -127,6 +128,12 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
+  const sanitizeQuery = (value: string) => {
+    const noDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const cleaned = noDiacritics.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+    return cleaned;
+  };
+
   const setRating = async (entry: AlbumEntry, value: number) => {
     try {
       await fetch(ALBUM_WEBHOOK_URL, {
@@ -148,6 +155,36 @@ export function AlbumView({ entries }: AlbumViewProps) {
       console.error("Failed to send album rating webhook", err);
     } finally {
       setOpenRatingForId(null);
+    }
+  };
+
+  const handleOpenExternal = async (entry: AlbumEntry) => {
+    setExternalLoading((prev) => {
+      const next = new Set(prev);
+      next.add(entry.id);
+      return next;
+    });
+    try {
+      const q = sanitizeQuery(entry.name);
+      const searchUrl = `https://api.yams.tf/search?query=${encodeURIComponent(q)}`;
+      const res = await fetch(searchUrl);
+      if (!res.ok) throw new Error(`Search returned ${res.status}`);
+      const json = await res.json();
+      const id: string | undefined = json?.albums?.[0]?.id;
+      if (id) {
+        const link = `https://yams.tf/#/album/2/${id}`;
+        window.open(link, "_blank", "noopener");
+      } else {
+        console.warn("No album id found for", entry.name);
+      }
+    } catch (err) {
+      console.error("Failed to get external link", err);
+    } finally {
+      setExternalLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
     }
   };
 
@@ -278,14 +315,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                           </div>
                         )}
                       </div>
-                      {entry.spotifyUrl && (
-                        <Button asChild variant="secondary" size="icon">
-                          <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                            <i className="fa-brands fa-spotify" aria-hidden />
-                            <span className="sr-only">Open in Spotify</span>
-                          </a>
-                        </Button>
-                      )}
+                      {/* moved external actions to footer */}
                     </div>
                   </div>
                   {(rating || liked) && (
@@ -309,6 +339,27 @@ export function AlbumView({ entries }: AlbumViewProps) {
                     </div>
                   )}
                 </CardHeader>
+                <CardFooter className="flex flex-wrap gap-2">
+                  {entry.spotifyUrl && (
+                    <Button asChild variant="secondary" size="sm">
+                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-spotify" aria-hidden />
+                        <span className="ml-2">Spotify</span>
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleOpenExternal(entry)}
+                    disabled={externalLoading.has(entry.id)}
+                  >
+                    YAMS.TF
+                  </Button>
+                  <Button variant="secondary" size="sm" type="button">
+                    BINIMUM
+                  </Button>
+                </CardFooter>
               </Card>
             );
           })}
