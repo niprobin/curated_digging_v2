@@ -181,16 +181,18 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
         }}
       />
       {feedback && (
-        <div
-          className={clsx(
-            "rounded-md border p-3 text-sm",
-            feedback.type === "success"
-              ? "border-emerald-300/60 bg-emerald-50 text-emerald-900"
-              : "border-rose-300/60 bg-rose-50 text-rose-900",
-          )}
-          role="status"
-        >
-          {feedback.message}
+        <div className="pointer-events-none fixed bottom-4 left-4 z-50">
+          <div
+            className={clsx(
+              "pointer-events-auto rounded-md border p-3 text-sm shadow-lg",
+              feedback.type === "success"
+                ? "border-emerald-300/60 bg-emerald-50 text-emerald-900"
+                : "border-rose-300/60 bg-rose-50 text-rose-900",
+            )}
+            role="status"
+          >
+            {feedback.message}
+          </div>
         </div>
       )}
       {filtered.length === 0 ? (
