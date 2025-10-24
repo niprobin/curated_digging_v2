@@ -89,7 +89,12 @@ export function AlbumView({ entries }: AlbumViewProps) {
       if (dismissedIds.has(entry.id)) {
         return false;
       }
-      if (hideChecked && entry.checked) {
+      // Always hide albums already liked
+      if (entry.liked) {
+        return false;
+      }
+      // Hide checked albums
+      if (entry.checked) {
         return false;
       }
       if (!filterByTimeWindow(entry.addedAt, timeWindow)) {
