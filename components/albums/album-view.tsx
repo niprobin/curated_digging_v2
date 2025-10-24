@@ -21,6 +21,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     state: { timeWindow, hideChecked, showLikedOnly },
   } = useFilters();
   const { isLiked, like, unlike } = useLikedHistory();
+  const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
 
   // Simple local persistence for album ratings (1-5)
   const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
@@ -126,22 +127,51 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
-  const setRating = (entry: AlbumEntry, value: number) => {
-    setRatings((prev) => ({ ...prev, [entry.id]: value }));
-    // Consider any rating >=1 as a like
-    const alreadyLiked = isLiked(entry.id, entry.liked) || entry.liked;
-    if (value >= 1 && !alreadyLiked) {
-      handleLike(entry, true);
+  const setRating = async (entry: AlbumEntry, value: number) => {
+    try {
+      await fetch(ALBUM_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          release_name: entry.name,
+          checked: true,
+          liked: true,
+          rating: value,
+        }),
+      });
+      setRatings((prev) => ({ ...prev, [entry.id]: value }));
+      const alreadyLiked = isLiked(entry.id, entry.liked) || entry.liked;
+      if (!alreadyLiked) {
+        handleLike(entry, true);
+      }
+      setDismissedIds((prev) => new Set(prev).add(entry.id));
+    } catch (err) {
+      console.error("Failed to send album rating webhook", err);
+    } finally {
+      setOpenRatingForId(null);
     }
-    setOpenRatingForId(null);
   };
 
-  const handleDismiss = (entry: AlbumEntry) => {
-    setDismissedIds((prev) => {
-      const next = new Set(prev);
-      next.add(entry.id);
-      return next;
-    });
+  const handleDismiss = async (entry: AlbumEntry) => {
+    try {
+      await fetch(ALBUM_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          release_name: entry.name,
+          checked: true,
+          liked: false,
+          rating: null,
+        }),
+      });
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to send album dismiss webhook", err);
+    }
   };
 
   return (
@@ -227,7 +257,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                           <div
                             role="dialog"
                             aria-label="Rate album"
-                            className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-popover p-2 shadow-md"
+                            className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-card p-2 shadow-md"
                           >
                             <div className="mb-2 text-xs text-muted-foreground">Rate this album</div>
                             <div className="flex items-center justify-between">
