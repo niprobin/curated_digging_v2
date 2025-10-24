@@ -131,6 +131,8 @@ export async function getAlbumEntries(): Promise<AlbumEntry[]> {
         liked: toBoolean(item.liked),
       } satisfies AlbumEntry;
     })
+    // Hide albums that come in as already checked or liked
+    .filter((entry) => !entry.checked && !entry.liked)
     .sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime());
 }
 
