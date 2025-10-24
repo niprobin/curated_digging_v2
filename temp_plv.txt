@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
+import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
 import { formatRelativeDate } from "@/lib/utils";
 import type { PlaylistEntry } from "@/lib/data";
@@ -56,8 +57,10 @@ function extractSpotifyId(entry: PlaylistEntry) {
 
 export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const {
-    state: { timeWindow, curator },
+    state: { timeWindow, curator, hideChecked, showLikedOnly },
   } = useFilters();
+  const { isLiked } = useLikedHistory();
+  const [localCheckedIds, setLocalCheckedIds] = React.useState<Set<string>>(() => new Set());
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -69,8 +72,36 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
 
   const filtered = React.useMemo(() => {
-    return entries.filter((entry) => { if (dismissedIds.has(entry.id)) { return false; } if (entry.checked) { return false; } if (entry.liked) { return false; } if (curator && entry.curator !== curator) { return false; } if (!filterByTimeWindow(entry.addedAt, timeWindow)) { return false; } return true; });
-  }, [entries, curator, timeWindow, dismissedIds]);
+    return entries.filter((entry) => {
+      if (dismissedIds.has(entry.id)) {
+        return false;
+      }
+      const isChecked = entry.checked || localCheckedIds.has(entry.id);
+      if (hideChecked && isChecked) {
+        return false;
+      }
+      if (curator && entry.curator !== curator) {
+        return false;
+      }
+      if (!filterByTimeWindow(entry.addedAt, timeWindow)) {
+        return false;
+      }
+      const liked = isLiked(entry.id, entry.liked) || entry.liked;
+      if (showLikedOnly && !liked) {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    entries,
+    hideChecked,
+    curator,
+    timeWindow,
+    showLikedOnly,
+    isLiked,
+    localCheckedIds,
+    dismissedIds,
+  ]);
 
   const closeDrawer = React.useCallback(() => {
     setDrawerEntry(null);
@@ -97,79 +128,103 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   }, [feedback]);
 
   const handleAddToPlaylist = async () => {
-  if (!drawerEntry || !selectedPlaylist) return;
-  const spotifyId = extractSpotifyId(drawerEntry);
-  if (!spotifyId) {
-    setSubmitError("Missing Spotify ID for this track.");
-    return;
-  }
-  setIsSubmitting(true);
-  setSubmitError(null);
-  try {
-    const response = await fetch(WEBHOOK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        spotify_id: spotifyId,
-        playlist: selectedPlaylist,
-        checked: "TRUE",
-        liked: "TRUE",
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Webhook returned ${response.status}`);
+    if (!drawerEntry || !selectedPlaylist) return;
+    const spotifyId = extractSpotifyId(drawerEntry);
+    if (!spotifyId) {
+      setSubmitError("Missing Spotify ID for this track.");
+      return;
     }
-    setFeedback({
-      type: "success",
-      message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
-    });
-    closeDrawer();
-  } catch (error) {
-    console.error("Failed to trigger playlist webhook", error);
-    setSubmitError("Could not reach the playlist webhook. Please try again.");
-    setIsSubmitting(false);
-  }
-};
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          spotify_id: spotifyId,
+          playlist: selectedPlaylist,
+          checked: "TRUE",
+          liked: "TRUE",
+        }),
+      });
+        if (!response.ok) {
+          throw new Error(`Webhook returned ${response.status}`);
+        }
+        setLocalCheckedIds((prev) => {
+          const next = new Set(prev);
+          next.add(drawerEntry.id);
+          return next;
+        });
+        setFeedback({
+          type: "success",
+          message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
+        });
+        closeDrawer();
+    } catch (error) {
+      console.error("Failed to trigger playlist webhook", error);
+      setSubmitError("Could not reach the playlist webhook. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
 
   const handleDismiss = async (entry: PlaylistEntry) => {
-  const spotifyId = extractSpotifyId(entry);
-  if (!spotifyId) {
-    setFeedback({ type: "error", message: "Missing Spotify ID for this track." });
-    return;
-  }
-  setDismissSubmitting((prev) => {
-    const next = new Set(prev);
-    next.add(entry.id);
-    return next;
-  });
-  try {
-    const response = await fetch(TRACK_CHECK_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spotify_id: spotifyId, checked: "TRUE" }),
-    });
-    if (!response.ok) {
-      throw new Error(`Webhook returned ${response.status}`);
+    const spotifyId = extractSpotifyId(entry);
+    if (!spotifyId) {
+      setFeedback({
+        type: "error",
+        message: "Missing Spotify ID for this track.",
+      });
+      return;
     }
-    setDismissedIds((prev) => {
+    setDismissSubmitting((prev) => {
       const next = new Set(prev);
       next.add(entry.id);
       return next;
     });
-    setFeedback({ type: "success", message: `Marked "${entry.track}" as checked.` });
-  } catch (error) {
-    console.error("Failed to trigger track checked webhook", error);
-    setFeedback({ type: "error", message: "Could not mark this track as checked. Please try again." });
-  } finally {
-    setDismissSubmitting((prev) => {
-      const next = new Set(prev);
-      next.delete(entry.id);
-      return next;
-    });
-  }
-};
+    try {
+      const response = await fetch(TRACK_CHECK_WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          spotify_id: spotifyId,
+          checked: "TRUE",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
+      }
+      setLocalCheckedIds((prev) => {
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(entry.id);
+        return next;
+      });
+      setFeedback({
+        type: "success",
+        message: `Marked "${entry.track}" as checked.`,
+      });
+    } catch (error) {
+      console.error("Failed to trigger track checked webhook", error);
+      setFeedback({
+        type: "error",
+        message: "Could not mark this track as checked. Please try again.",
+      });
+    } finally {
+      setDismissSubmitting((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -203,7 +258,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
             if (dismissedIds.has(entry.id)) {
               return null;
             }
-            const isChecked = entry.checked;
+            const isChecked = entry.checked || localCheckedIds.has(entry.id);
             const isDismissLoading = dismissSubmitting.has(entry.id);
             return (
               <Card key={entry.id} className="flex flex-col">
@@ -339,5 +394,3 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     </div>
   );
 }
-
-

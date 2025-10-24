@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useFilters } from "@/components/filters/filter-provider";
 import { Button } from "@/components/ui/button";
-import { Toggle } from "@/components/ui/toggle";
 import { timeWindowOptions } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +18,7 @@ export function FilterToolbar({
   onCuratorChange,
 }: FilterToolbarProps) {
   const {
-    state: { timeWindow, curator, hideChecked, showLikedOnly },
+    state: { timeWindow, curator },
     dispatch,
   } = useFilters();
 
@@ -57,22 +56,6 @@ export function FilterToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Toggle
-          pressed={hideChecked}
-          onPressedChange={(pressed) =>
-            dispatch({ type: "toggle-hide-checked", payload: pressed })
-          }
-        >
-          Hide checked
-        </Toggle>
-        <Toggle
-          pressed={showLikedOnly}
-          onPressedChange={(pressed) =>
-            dispatch({ type: "toggle-liked-only", payload: pressed })
-          }
-        >
-          Show liked only
-        </Toggle>
         {showCuratorFilter && sortedCurators.length > 0 && (
           <div className="flex flex-wrap items-center gap-1">
             {sortedCurators.map((name) => (
