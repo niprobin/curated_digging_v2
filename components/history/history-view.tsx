@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import * as React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AlbumEntry, PlaylistEntry } from "@/lib/data";
@@ -12,20 +13,41 @@ interface HistoryViewProps {
 }
 
 export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
+  const [tab, setTab] = React.useState<"songs" | "albums">("songs");
+
+  const isSongs = tab === "songs";
+  const count = isSongs ? likedTracks.length : likedAlbums.length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-2xl">
-            Liked songs
-            <Badge variant="secondary">{likedTracks.length}</Badge>
-          </CardTitle>
-          <CardDescription>Songs marked as liked in the playlist source.</CardDescription>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-2xl">Your likes</CardTitle>
+            <div className="flex items-center gap-2 rounded-md border border-border p-1">
+              <Button
+                size="sm"
+                variant={isSongs ? "secondary" : "ghost"}
+                onClick={() => setTab("songs")}
+              >
+                Songs <Badge variant="secondary" className="ml-2">{likedTracks.length}</Badge>
+              </Button>
+              <Button
+                size="sm"
+                variant={!isSongs ? "secondary" : "ghost"}
+                onClick={() => setTab("albums")}
+              >
+                Albums <Badge variant="secondary" className="ml-2">{likedAlbums.length}</Badge>
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {likedTracks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No liked songs yet.</p>
-          ) : (
+          {count === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {isSongs ? "No liked songs yet." : "No liked albums yet."}
+            </p>
+          ) : isSongs ? (
             likedTracks.map((t) => (
               <div
                 key={t.id}
@@ -46,21 +68,6 @@ export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
                 )}
               </div>
             ))
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-2xl">
-            Liked albums
-            <Badge variant="secondary">{likedAlbums.length}</Badge>
-          </CardTitle>
-          <CardDescription>Albums marked as liked in the albums source.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {likedAlbums.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No liked albums yet.</p>
           ) : (
             likedAlbums.map((a) => (
               <div
@@ -87,4 +94,3 @@ export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
     </div>
   );
 }
-
