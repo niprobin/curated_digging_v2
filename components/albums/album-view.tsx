@@ -20,6 +20,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
   const {
     state: { timeWindow, hideChecked, showLikedOnly },
   } = useFilters();
+  const PAGE_SIZE = 10;
+  const [page, setPage] = React.useState(1);
   const { isLiked, like, unlike } = useLikedHistory();
   const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
   const [externalLoading, setExternalLoading] = React.useState<Set<string>>(() => new Set());
@@ -109,6 +111,15 @@ export function AlbumView({ entries }: AlbumViewProps) {
       return true;
     });
   }, [entries, hideChecked, timeWindow, showLikedOnly, isLiked, dismissedIds]);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [timeWindow, hideChecked, showLikedOnly, dismissedIds, entries.length]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  const paged = filtered.slice(start, end);
 
   const handleLike = (entry: AlbumEntry, liked: boolean) => {
     if (liked) {
@@ -219,7 +230,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {filtered.map((entry) => {
+          {paged.map((entry) => {
             const liked = isLiked(entry.id, entry.liked) || entry.liked;
             const rating = ratings[entry.id] ?? 0;
             return (
@@ -363,6 +374,38 @@ export function AlbumView({ entries }: AlbumViewProps) {
               </Card>
             );
           })}
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
+          <div>
+            {filtered.length === 0 ? null : (
+              <span>
+                {Math.min(start + 1, filtered.length)}–{Math.min(end, filtered.length)} of {filtered.length}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Prev
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
     </div>

@@ -14,9 +14,21 @@ interface HistoryViewProps {
 
 export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
   const [tab, setTab] = React.useState<"songs" | "albums">("songs");
+  const PAGE_SIZE = 10;
+  const [page, setPage] = React.useState(1);
 
   const isSongs = tab === "songs";
   const count = isSongs ? likedTracks.length : likedAlbums.length;
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [tab, likedTracks.length, likedAlbums.length]);
+
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  const songsPaged = likedTracks.slice(start, end);
+  const albumsPaged = likedAlbums.slice(start, end);
 
   return (
     <div className="space-y-4">
@@ -48,7 +60,7 @@ export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
               {isSongs ? "No liked songs yet." : "No liked albums yet."}
             </p>
           ) : isSongs ? (
-            likedTracks.map((t) => (
+            songsPaged.map((t) => (
               <div
                 key={t.id}
                 className="flex flex-col gap-2 rounded-md border border-border/60 bg-card/80 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -69,7 +81,7 @@ export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
               </div>
             ))
           ) : (
-            likedAlbums.map((a) => (
+            albumsPaged.map((a) => (
               <div
                 key={a.id}
                 className="flex flex-col gap-2 rounded-md border border-border/60 bg-card/80 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -88,6 +100,36 @@ export function HistoryView({ likedTracks, likedAlbums }: HistoryViewProps) {
                 )}
               </div>
             ))
+          )}
+          {count > 0 && (
+            <div className="mt-2 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+              <div>
+                <span>
+                  {Math.min(start + 1, count)}–{Math.min(end, count)} of {count}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  Prev
+                </Button>
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

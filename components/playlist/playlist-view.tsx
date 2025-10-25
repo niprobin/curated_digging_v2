@@ -4,7 +4,7 @@ import * as React from "react";
 import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
 import { filterByTimeWindow } from "@/lib/filters";
@@ -58,6 +58,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const {
     state: { timeWindow, curator },
   } = useFilters();
+  const PAGE_SIZE = 10;
+  const [page, setPage] = React.useState(1);
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -71,6 +73,16 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => { if (dismissedIds.has(entry.id)) { return false; } if (entry.checked) { return false; } if (entry.liked) { return false; } if (curator && entry.curator !== curator) { return false; } if (!filterByTimeWindow(entry.addedAt, timeWindow)) { return false; } return true; });
   }, [entries, curator, timeWindow, dismissedIds]);
+
+  React.useEffect(() => {
+    // Reset to first page when filters or dataset change
+    setPage(1);
+  }, [curator, timeWindow, dismissedIds, entries.length]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const end = start + PAGE_SIZE;
+  const paged = filtered.slice(start, end);
 
   const closeDrawer = React.useCallback(() => {
     setDrawerEntry(null);
@@ -200,8 +212,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           Nothing to show. Adjust your filters or check back later.
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {filtered.map((entry) => {
+        <div className="grid gap-3 md:grid-cols-2">
+          {paged.map((entry) => {
             if (dismissedIds.has(entry.id)) {
               return null;
             }
@@ -209,24 +221,28 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
             const isDismissLoading = dismissSubmitting.has(entry.id);
             return (
               <Card key={entry.id} className="flex flex-col">
-                <CardHeader className="flex flex-col gap-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex flex-1 flex-col gap-2">
-                      <CardTitle className="text-xl font-semibold text-foreground">{entry.track}</CardTitle>
-                      <span className="text-sm font-medium text-foreground">{entry.artist}</span>
-                      <Badge variant="secondary" className="w-fit">
-                        {entry.curator}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground capitalize">
-                        Added {formatRelativeDate(entry.addedAt)}
-                      </span>
-                      {isChecked && (
-                        <Badge variant="outline" className="w-fit border-dashed text-muted-foreground">
-                          Already listened
+                <CardHeader className="flex flex-col gap-2 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-1 flex-col gap-1">
+                      <CardTitle className="text-lg font-medium text-foreground">
+                        {entry.artist}
+                        <span className="px-2 text-muted-foreground">-</span>
+                        {entry.track}
+                      </CardTitle>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
+                          {entry.curator}
                         </Badge>
-                      )}
+                        <span className="text-muted-foreground">•</span>
+                        <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
+                        {isChecked && (
+                          <Badge variant="outline" className="h-5 w-fit border-dashed px-1.5 text-[10px] text-muted-foreground">
+                            Already listened
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-1 self-start">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -249,20 +265,65 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         <i className="fa-solid fa-plus" aria-hidden />
                         <span className="sr-only">Add to playlist</span>
                       </Button>
-                      {entry.spotifyUrl && (
-                        <Button asChild variant="secondary" size="icon">
-                          <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                            <i className="fa-brands fa-spotify" aria-hidden />
-                            <span className="sr-only">Open in Spotify</span>
-                          </a>
-                        </Button>
-                      )}
+                      {/* External actions moved to footer to match album cards */}
                     </div>
                   </div>
                 </CardHeader>
+                <CardFooter className="flex items-center gap-1 py-2">
+                  {entry.spotifyUrl && (
+                    <Button asChild variant="secondary" size="icon" className="h-8 w-8">
+                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
+                        <i className="fa-brands fa-spotify" aria-hidden />
+                        <span className="sr-only">Open in Spotify</span>
+                      </a>
+                    </Button>
+                  )}
+                  <Button asChild variant="secondary" size="icon" className="h-8 w-8">
+                    <a
+                      href={`https://yams.tf/#/search/${encodeURIComponent(`${entry.artist} ${entry.track}`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                      <span className="sr-only">Search on YAMS.TF</span>
+                    </a>
+                  </Button>
+                </CardFooter>
               </Card>
             );
           })}
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
+          <div>
+            {filtered.length === 0 ? null : (
+              <span>
+                {Math.min(start + 1, filtered.length)}–{Math.min(end, filtered.length)} of {filtered.length}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Prev
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
       {drawerEntry && (
