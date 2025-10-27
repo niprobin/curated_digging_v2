@@ -126,6 +126,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       body: JSON.stringify({
         spotify_id: spotifyId,
         playlist: selectedPlaylist,
+        artist: drawerEntry.artist,
+        track: drawerEntry.track,
         checked: "TRUE",
         liked: "TRUE",
       }),
@@ -246,7 +248,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-muted-foreground"
+                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 focus-visible:ring-rose-500/60 transition-colors"
                         onClick={() => handleDismiss(entry)}
                         disabled={isDismissLoading}
                       >
@@ -256,6 +258,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 focus-visible:ring-amber-500/60 transition-colors"
                         onClick={() => {
                           setDrawerEntry(entry);
                           setSelectedPlaylist(null);
