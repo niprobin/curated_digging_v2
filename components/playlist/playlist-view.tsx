@@ -139,6 +139,12 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       type: "success",
       message: `Sent "${drawerEntry.track}" to ${selectedPlaylist}.`,
     });
+    // Hide the entry from the list, similar to dismiss
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      if (drawerEntry) next.add(drawerEntry.id);
+      return next;
+    });
     closeDrawer();
   } catch (error) {
     console.error("Failed to trigger playlist webhook", error);
@@ -248,7 +254,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 focus-visible:ring-rose-500/60 transition-colors"
+                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700 focus-visible:ring-rose-500/60 focus-visible:!text-rose-700 transition-colors"
                         onClick={() => handleDismiss(entry)}
                         disabled={isDismissLoading}
                       >
@@ -258,7 +264,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 focus-visible:ring-amber-500/60 transition-colors"
+                        className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 hover:!text-amber-700 focus-visible:ring-amber-500/60 focus-visible:!text-amber-700 transition-colors"
                         onClick={() => {
                           setDrawerEntry(entry);
                           setSelectedPlaylist(null);

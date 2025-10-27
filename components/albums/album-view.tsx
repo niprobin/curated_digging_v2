@@ -278,7 +278,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 focus-visible:ring-rose-500/60 transition-colors"
+                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700 focus-visible:ring-rose-500/60 focus-visible:!text-rose-700 transition-colors"
                         onClick={() => handleDismiss(entry)}
                       >
                         <i className="fa-solid fa-xmark" aria-hidden />
@@ -288,7 +288,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 focus-visible:ring-amber-500/60 transition-colors"
+                          className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 hover:!text-amber-700 focus-visible:ring-amber-500/60 focus-visible:!text-amber-700 transition-colors"
                           aria-pressed={liked}
                           onClick={() => setOpenRatingForId((id) => (id === entry.id ? null : entry.id))}
                           aria-haspopup="dialog"
