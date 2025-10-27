@@ -61,6 +61,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const PAGE_SIZE = 10;
   const [page, setPage] = React.useState(1);
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
+  const [yamsUrl, setYamsUrl] = React.useState<string | null>(null);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
@@ -101,6 +102,15 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [drawerEntry, closeDrawer]);
+
+  React.useEffect(() => {
+    if (!yamsUrl) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setYamsUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [yamsUrl]);
 
   React.useEffect(() => {
     if (!feedback) return;
@@ -287,15 +297,18 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       </a>
                     </Button>
                   )}
-                  <Button asChild variant="secondary" size="icon" className="h-8 w-8">
-                    <a
-                      href={`https://yams.tf/#/search/${encodeURIComponent(`${entry.artist} ${entry.track}`)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <i className="fa-solid fa-magnifying-glass" aria-hidden />
-                      <span className="sr-only">Search on YAMS.TF</span>
-                    </a>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() =>
+                      setYamsUrl(
+                        `https://yams.tf/#/search/${encodeURIComponent(`${entry.artist} ${entry.track}`)}`,
+                      )
+                    }
+                  >
+                    <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                    <span className="sr-only">Search on YAMS.TF</span>
                   </Button>
                 </CardFooter>
               </Card>
@@ -404,6 +417,44 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
               <Button onClick={handleAddToPlaylist} disabled={!selectedPlaylist || isSubmitting}>
                 {isSubmitting ? "Adding..." : "Add to playlist"}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {yamsUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setYamsUrl(null)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="yams-modal-title"
+            className="relative flex h-[80vh] w-[80vw] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-border bg-card/60 p-2">
+              <h2 id="yams-modal-title" className="text-sm font-medium">
+                YAMS.TF
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700"
+                onClick={() => setYamsUrl(null)}
+                aria-label="Close YAMS"
+                title="Close"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </Button>
+            </div>
+            <div className="flex-1">
+              <iframe
+                title="YAMS.TF"
+                src={yamsUrl}
+                className="h-full w-full bg-background"
+              />
             </div>
           </div>
         </div>

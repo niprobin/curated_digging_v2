@@ -25,6 +25,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
   const { isLiked, like, unlike } = useLikedHistory();
   const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
   const [externalLoading, setExternalLoading] = React.useState<Set<string>>(() => new Set());
+  const [yamsUrl, setYamsUrl] = React.useState<string | null>(null);
 
   // Simple local persistence for album ratings (1-5)
   const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
@@ -87,6 +88,15 @@ export function AlbumView({ entries }: AlbumViewProps) {
       window.removeEventListener("mousedown", onClick);
     };
   }, [openRatingForId]);
+
+  React.useEffect(() => {
+    if (!yamsUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setYamsUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [yamsUrl]);
 
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => {
@@ -183,10 +193,10 @@ export function AlbumView({ entries }: AlbumViewProps) {
       const json = await res.json();
       const id: string | undefined = json?.albums?.[0]?.id;
       if (id) {
-        const link = `https://yams.tf/#/album/2/${id}`;
-        window.open(link, "_blank", "noopener");
+        setYamsUrl(`https://yams.tf/#/album/2/${id}`);
       } else {
-        console.warn("No album id found for", entry.name);
+        // Fallback to search page if no id is found
+        setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(q)}`);
       }
     } catch (err) {
       console.error("Failed to get external link", err);
@@ -409,6 +419,43 @@ export function AlbumView({ entries }: AlbumViewProps) {
           </div>
         </div>
       )}
+      {yamsUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setYamsUrl(null)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="yams-modal-title"
+            className="relative flex h-[80vh] w-[80vw] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-border bg-card/60 p-2">
+              <h2 id="yams-modal-title" className="text-sm font-medium">
+                YAMS.TF
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700"
+                onClick={() => setYamsUrl(null)}
+                aria-label="Close YAMS"
+                title="Close"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </Button>
+            </div>
+            <div className="flex-1">
+              <iframe title="YAMS.TF" src={yamsUrl} className="h-full w-full bg-background" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// YAMS modal
+// Rendered at the bottom of the component tree to overlay content
