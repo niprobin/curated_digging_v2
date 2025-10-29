@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 const ADD_ALBUM_WEBHOOK = "https://n8n.niprobin.com/webhook/add-album";
 
-export function AddAlbumButton() {
+export function AddAlbumButton({ iconOnly = false }: { iconOnly?: boolean } = {}) {
   const [open, setOpen] = React.useState(false);
   const [value, setValue] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -42,9 +42,13 @@ export function AddAlbumButton() {
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
+      <Button size={iconOnly ? "icon" : "sm"} onClick={() => setOpen(true)} title="Add album">
         <i className="fa-solid fa-plus" aria-hidden />
-        <span className="ml-2">Add an album</span>
+        {iconOnly ? (
+          <span className="sr-only">Add an album</span>
+        ) : (
+          <span className="ml-2">Add an album</span>
+        )}
       </Button>
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center">

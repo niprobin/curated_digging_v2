@@ -202,7 +202,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
 };
 
   return (
-    <div className="fixed inset-x-0 top-16 bottom-0 md:flex md:gap-0 md:overflow-hidden">
+    <div className="fixed top-0 bottom-0 right-0 left-14 md:left-16 md:flex md:gap-0 md:overflow-hidden">
       <div className={clsx("space-y-4 w-full md:w-1/2 h-full overflow-y-auto px-4 py-6") }>
       {/* Split filters into two matching cards */}
       <FilterToolbar showTimeWindow />

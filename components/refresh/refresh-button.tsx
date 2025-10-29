@@ -10,10 +10,11 @@ type RefreshButtonProps =
   | { tag: Tag; tags?: never }
   | { tags: Tag[]; tag?: never };
 
-export function RefreshButton(props: RefreshButtonProps) {
+export function RefreshButton(props: RefreshButtonProps & { iconOnly?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
+  const { iconOnly = false } = props as { iconOnly?: boolean };
 
   const onClick = () => {
     setError(null);
@@ -40,11 +41,15 @@ export function RefreshButton(props: RefreshButtonProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <Button onClick={onClick} size="sm" variant="outline" disabled={pending}>
+      <Button onClick={onClick} size={iconOnly ? "icon" : "sm"} variant="outline" disabled={pending} title="Refresh">
         <i className="fa-solid fa-rotate" aria-hidden />
-        <span className="ml-2">{pending ? "Refreshing..." : "Refresh"}</span>
+        {iconOnly ? (
+          <span className="sr-only">Refresh</span>
+        ) : (
+          <span className="ml-2">{pending ? "Refreshing..." : "Refresh"}</span>
+        )}
       </Button>
-      {error && <span className="text-xs text-rose-500">{error}</span>}
+      {!iconOnly && error && <span className="text-xs text-rose-500">{error}</span>}
     </div>
   );
 }

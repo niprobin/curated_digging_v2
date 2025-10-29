@@ -52,9 +52,9 @@ export default function RootLayout({
       >
         <Script src="https://kit.fontawesome.com/cd85a69654.js" crossOrigin="anonymous" async />
         <Providers>
-          <div className="flex min-h-screen flex-col">
+          <div className="flex min-h-screen">
             <SiteHeader />
-            <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+            <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-6 pl-16 md:pl-20">{children}</main>
           </div>
         </Providers>
       </body>
