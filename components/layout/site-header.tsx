@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { RefreshButton } from "@/components/refresh/refresh-button";
 import { AddAlbumButton } from "@/components/albums/add-album-button";
 
 const navItems = [
@@ -42,6 +43,7 @@ export function SiteHeader() {
               );
             })}
           </nav>
+          <RefreshButton tags={["playlists", "albums"]} />
           <AddAlbumButton />
         </div>
       </div>
