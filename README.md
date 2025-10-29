@@ -1,14 +1,14 @@
-ï»¿# Curated Music To-do app
+# Curated Digging
 
-Curated Music To-do is your personal hub to keep up with new tracks and albums coming from trusted curators. The app mirrors a shadcn-inspired design system, works great on mobile as a PWA, and keeps your filters and likes in sync across every section.
+Curated Digging is your personal hub to keep up with new tracks and albums coming from trusted curators. The app mirrors a shadcn-inspired design system, works great on mobile as a PWA, and keeps your filters and likes in sync across every section.
 
 ## Features
 
-- **Hierarchical filters** â€“ switch between playlists and albums without losing your time window, curator, or visibility preferences.
-- **Opensheet-driven data** â€“ tracks and releases load directly from the shared Google Sheets via Opensheet JSON endpoints.
-- **Like history (v2)** â€“ mark songs and albums you love; the app keeps an audit trail so you can revisit active and archived favourites.
-- **PWA ready** â€“ installable experience with an offline fallback, manifest, and generated icons.
-- **Font Awesome kit** â€“ icons load through the provided kit for a consistent visual language.
+- **Hierarchical filters** – switch between playlists and albums without losing your time window, curator, or visibility preferences.
+- **Opensheet-driven data** – tracks and releases load directly from the shared Google Sheets via Opensheet JSON endpoints.
+- **Like history (v2)** – mark songs and albums you love; the app keeps an audit trail so you can revisit active and archived favourites.
+- **PWA ready** – installable experience with an offline fallback, manifest, and generated icons.
+- **Font Awesome kit** – icons load through the provided kit for a consistent visual language.
 
 ## Data sources
 
@@ -40,11 +40,11 @@ npm run start
 
 ## Project structure highlights
 
-- `app/` â€“ Next.js App Router pages (`/`, `/playlists`, `/albums`, `/history`, `/offline`).
-- `components/` â€“ UI primitives and domain views (filters, playlists, albums, overview, history).
-- `lib/` â€“ Data fetching helpers, filter utilities, and shared helpers.
-- `public/manifest.webmanifest` â€“ PWA manifest plus generated icons in multiple sizes.
-- `next.config.ts` â€“ Next.js configuration wrapped with `next-pwa` for offline support.
+- `app/` – Next.js App Router pages (`/`, `/playlists`, `/albums`, `/history`, `/offline`).
+- `components/` – UI primitives and domain views (filters, playlists, albums, overview, history).
+- `lib/` – Data fetching helpers, filter utilities, and shared helpers.
+- `public/manifest.webmanifest` – PWA manifest plus generated icons in multiple sizes.
+- `next.config.ts` – Next.js configuration wrapped with `next-pwa` for offline support.
 
 ## Linting
 

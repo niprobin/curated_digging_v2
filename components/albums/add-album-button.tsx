@@ -47,7 +47,7 @@ export function AddAlbumButton() {
         <span className="ml-2">Add an album</span>
       </Button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 grid place-items-center">
           <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div
             role="dialog"
@@ -88,4 +88,3 @@ export function AddAlbumButton() {
     </>
   );
 }
-

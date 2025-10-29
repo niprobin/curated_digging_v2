@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 const year = new Date().getFullYear();
 
 export const metadata: Metadata = {
-  title: "Curated Music To-do",
+  title: "Curated Digging",
   description:
     "Keep track of new music from playlists and albums, with persistent filters and quick history.",
   manifest: "/manifest.webmanifest",
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Curated Music",
+    title: "Curated Digging",
     statusBarStyle: "black-translucent",
   },
 };
@@ -55,15 +55,6 @@ export default function RootLayout({
           <div className="flex min-h-screen flex-col">
             <SiteHeader />
             <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
-            <footer className="border-t border-border bg-card/70">
-              <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 text-sm text-muted-foreground">
-                <span>&copy; {year} Curated Music</span>
-                <span className="flex items-center gap-2">
-                  <i className="fa-solid fa-circle-info" aria-hidden />
-                  <span>Version 2 preview</span>
-                </span>
-              </div>
-            </footer>
           </div>
         </Providers>
       </body>

@@ -202,14 +202,11 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
 };
 
   return (
-    <div className="space-y-6">
-      <FilterToolbar
-        curators={curators}
-        showCuratorFilter
-        onCuratorChange={() => {
-          /* noop - handled through context */
-        }}
-      />
+    <div className="fixed inset-x-0 top-16 bottom-0 md:flex md:gap-0 md:overflow-hidden">
+      <div className={clsx("space-y-4 w-full md:w-1/2 h-full overflow-y-auto px-4 py-6") }>
+      {/* Split filters into two matching cards */}
+      <FilterToolbar showTimeWindow />
+      <FilterToolbar curators={curators} showCuratorFilter showTimeWindow={false} />
       {feedback && (
         <div className="pointer-events-none fixed bottom-4 left-4 z-50">
           <div
@@ -230,7 +227,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           Nothing to show. Adjust your filters or check back later.
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-1">
           {paged.map((entry) => {
             if (dismissedIds.has(entry.id)) {
               return null;
@@ -242,7 +239,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                 <CardHeader className="flex flex-col gap-2 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-1 flex-col gap-1">
-                      <CardTitle className="text-lg font-medium text-foreground">
+                      <CardTitle className="text-lg font-medium leading-snug text-foreground break-words whitespace-normal">
                         {entry.artist}
                         <span className="px-2 text-muted-foreground">-</span>
                         {entry.track}
@@ -421,41 +418,44 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           </div>
         </div>
       )}
-      {yamsUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+      </div>
+      {/* Right pane: persistent external viewer (lean, full viewport height, no padding) */}
+      <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
+        {yamsUrl && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
             onClick={() => setYamsUrl(null)}
-            aria-hidden
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="yams-modal-title"
-            className="relative flex h-[80vh] w-[80vw] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+            aria-label="Close external"
+            title="Close"
           >
-            <div className="flex items-center justify-between border-b border-border bg-card/60 p-2">
-              <h2 id="yams-modal-title" className="text-sm font-medium">
-                YAMS.TF
-              </h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700"
-                onClick={() => setYamsUrl(null)}
-                aria-label="Close YAMS"
-                title="Close"
-              >
-                <i className="fa-solid fa-xmark" aria-hidden />
-              </Button>
-            </div>
-            <div className="flex-1">
-              <iframe
-                title="YAMS.TF"
-                src={yamsUrl}
-                className="h-full w-full bg-background"
-              />
-            </div>
+            <i className="fa-solid fa-xmark" aria-hidden />
+          </Button>
+        )}
+        <div className="flex-1 overflow-hidden">
+          {yamsUrl ? (
+            <iframe title="External" src={yamsUrl} className="h-full w-full" />
+          ) : (
+            <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
+          )}
+        </div>
+      </div>
+      {/* Mobile external viewer below content */}
+      {yamsUrl && (
+        <div className="relative md:hidden mt-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-2 z-10 text-muted-foreground hover:text-foreground"
+            onClick={() => setYamsUrl(null)}
+            aria-label="Close external"
+            title="Close"
+          >
+            <i className="fa-solid fa-xmark" aria-hidden />
+          </Button>
+          <div className="h-[60vh] w-full">
+            <iframe title="External" src={yamsUrl} className="h-full w-full" />
           </div>
         </div>
       )}
