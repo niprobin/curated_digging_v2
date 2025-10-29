@@ -421,18 +421,6 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       </div>
       {/* Right pane: persistent external viewer (lean, full viewport height, no padding) */}
       <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
-        {yamsUrl && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-            onClick={() => setYamsUrl(null)}
-            aria-label="Close external"
-            title="Close"
-          >
-            <i className="fa-solid fa-xmark" aria-hidden />
-          </Button>
-        )}
         <div className="flex-1 overflow-hidden">
           {yamsUrl ? (
             <iframe title="External" src={yamsUrl} className="h-full w-full" />
@@ -444,16 +432,6 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       {/* Mobile external viewer below content */}
       {yamsUrl && (
         <div className="relative md:hidden mt-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2 z-10 text-muted-foreground hover:text-foreground"
-            onClick={() => setYamsUrl(null)}
-            aria-label="Close external"
-            title="Close"
-          >
-            <i className="fa-solid fa-xmark" aria-hidden />
-          </Button>
           <div className="h-[60vh] w-full">
             <iframe title="External" src={yamsUrl} className="h-full w-full" />
           </div>
