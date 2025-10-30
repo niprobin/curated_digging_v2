@@ -129,21 +129,60 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     return cleaned;
   };
 
+  const ALT_HOSTS = [
+    "katze.qqdl.site",
+    "maus.qqdl.site",
+    "hund.qqdl.site",
+    "triton.squid.wtf",
+  ] as const;
+
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  async function fetchJsonWithFallback(build: (host: string) => string): Promise<unknown> {
+    let lastErr: unknown = null;
+    for (const host of ALT_HOSTS) {
+      const url = build(host);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          lastErr = new Error(`HTTP ${res.status}`);
+          continue;
+        }
+        return (await res.json()) as unknown;
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
+    }
+    throw lastErr ?? new Error("All hosts failed");
+  }
+
   const handlePlay = async (entry: PlaylistEntry) => {
     try {
       setAudioLoading(true);
       setAudioInfo(null);
       setYamsUrl(null);
       const q = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-      const searchRes = await fetch(`https://katze.qqdl.site/search/?s=${encodeURIComponent(q)}`);
-      if (!searchRes.ok) throw new Error(`Search returned ${searchRes.status}`);
-      const searchJson = await searchRes.json();
-      const id: string | undefined = searchJson?.items?.[0]?.id;
+      const searchJson = await fetchJsonWithFallback((host) => `https://${host}/search/?s=${encodeURIComponent(q)}`);
+      const id: string | undefined = (() => {
+        if (searchJson && typeof searchJson === "object") {
+          const obj = searchJson as Record<string, unknown>;
+          const items = obj["items"];
+          if (Array.isArray(items) && items.length > 0) {
+            const first = items[0];
+            if (first && typeof first === "object") {
+              const val = (first as Record<string, unknown>)["id"];
+              if (typeof val === "string" || typeof val === "number") return String(val);
+            }
+          }
+        }
+        return undefined;
+      })();
       if (!id) throw new Error("No id found");
-      await new Promise((r) => setTimeout(r, 2000));
-      const trackRes = await fetch(`https://katze.qqdl.site/track/?id=${encodeURIComponent(id)}`);
-      if (!trackRes.ok) throw new Error(`Track returned ${trackRes.status}`);
-      const trackJson = (await trackRes.json()) as unknown;
+      await delay(2000);
+      const trackJson = (await fetchJsonWithFallback(
+        (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
+      )) as unknown;
       const arr = Array.isArray(trackJson) ? (trackJson as unknown[]) : [trackJson];
       const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
       const meta = objs.find((o) => typeof o["title"] === "string");
