@@ -49,7 +49,7 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
             <CardContent>
               <Button asChild variant="secondary" className="w-full">
                 <Link href="/playlists">
-                  Open playlists
+                  Open tracks
                   <i className="fa-solid fa-arrow-right" aria-hidden />
                 </Link>
               </Button>

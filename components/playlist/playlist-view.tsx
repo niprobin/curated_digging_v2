@@ -62,6 +62,17 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const [page, setPage] = React.useState(1);
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [yamsUrl, setYamsUrl] = React.useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = React.useState(false);
+  const [audioInfo, setAudioInfo] = React.useState<{
+    url: string;
+    title: string;
+    artist: string;
+  } | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
+  const [volume, setVolume] = React.useState(1);
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
@@ -111,6 +122,120 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [yamsUrl]);
+
+  const sanitizeTrackQuery = (value: string) => {
+    const noDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const cleaned = noDiacritics.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+    return cleaned;
+  };
+
+  const handlePlay = async (entry: PlaylistEntry) => {
+    try {
+      setAudioLoading(true);
+      setAudioInfo(null);
+      setYamsUrl(null);
+      const q = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+      const searchRes = await fetch(`https://katze.qqdl.site/search/?s=${encodeURIComponent(q)}`);
+      if (!searchRes.ok) throw new Error(`Search returned ${searchRes.status}`);
+      const searchJson = await searchRes.json();
+      const id: string | undefined = searchJson?.items?.[0]?.id;
+      if (!id) throw new Error("No id found");
+      await new Promise((r) => setTimeout(r, 2000));
+      const trackRes = await fetch(`https://katze.qqdl.site/track/?id=${encodeURIComponent(id)}`);
+      if (!trackRes.ok) throw new Error(`Track returned ${trackRes.status}`);
+      const trackJson = (await trackRes.json()) as unknown;
+      const arr = Array.isArray(trackJson) ? (trackJson as unknown[]) : [trackJson];
+      const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
+      const meta = objs.find((o) => typeof o["title"] === "string");
+      const urlObj = objs.find(
+        (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
+      );
+      const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as string | undefined;
+      const title: string = (meta?.["title"] as string | undefined) ?? entry.track;
+      let artist: string = entry.artist;
+      const artistName = meta?.["artistName"];
+      if (typeof artistName === "string") {
+        artist = artistName;
+      } else {
+        const artistObj = meta?.["artist"];
+        if (artistObj && typeof artistObj === "object") {
+          const nameVal = (artistObj as Record<string, unknown>)["name"];
+          if (typeof nameVal === "string") artist = nameVal;
+        }
+      }
+      if (!url) throw new Error("No streaming URL");
+      setAudioInfo({ url, title, artist });
+      // autoplay once ready
+      setTimeout(() => {
+        try {
+          if (audioRef.current) {
+            audioRef.current.volume = volume;
+            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          }
+        } catch {}
+      }, 100);
+    } catch (e) {
+      console.error("Failed to fetch streaming URL", e);
+      setAudioInfo(null);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onTime = () => setCurrentTime(el.currentTime || 0);
+    const onLoaded = () => setDuration(el.duration || 0);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
+    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("loadedmetadata", onLoaded);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("loadedmetadata", onLoaded);
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+    };
+  }, [audioInfo]);
+
+  const togglePlay = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    } else {
+      el.pause();
+    }
+  };
+
+  const onSeek = (val: number) => {
+    const el = audioRef.current;
+    if (!el || !Number.isFinite(val)) return;
+    el.currentTime = Math.min(Math.max(0, val), duration || 0);
+    setCurrentTime(el.currentTime);
+  };
+
+  const onVol = (val: number) => {
+    const el = audioRef.current;
+    const v = Math.min(Math.max(0, val), 1);
+    setVolume(v);
+    if (el) el.volume = v;
+  };
+
+  const fmtTime = (s: number) => {
+    if (!Number.isFinite(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${m}:${sec}`;
+  };
 
   React.useEffect(() => {
     if (!feedback) return;
@@ -286,6 +411,16 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                   </div>
                 </CardHeader>
                 <CardFooter className="flex items-center gap-1 py-2">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Play"
+                    onClick={() => handlePlay(entry)}
+                  >
+                    <i className="fa-solid fa-play" aria-hidden />
+                    <span className="sr-only">Play</span>
+                  </Button>
                   {entry.spotifyUrl && (
                     <Button asChild variant="secondary" size="icon" className="h-8 w-8">
                       <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
@@ -298,11 +433,13 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                     variant="secondary"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() =>
+                    onClick={() => {
+                      setAudioInfo(null);
+                      setAudioLoading(false);
                       setYamsUrl(
                         `https://yams.tf/#/search/${encodeURIComponent(`${entry.artist} ${entry.track}`)}`,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <i className="fa-solid fa-magnifying-glass" aria-hidden />
                     <span className="sr-only">Search on YAMS.TF</span>
@@ -422,7 +559,59 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       {/* Right pane: persistent external viewer (lean, full viewport height, no padding) */}
       <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
         <div className="flex-1 overflow-hidden">
-          {yamsUrl ? (
+          {audioLoading ? (
+            <div className="grid h-full place-items-center text-muted-foreground">
+              <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
+            </div>
+          ) : audioInfo ? (
+            <div className="grid h-full place-items-center p-4">
+              <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
+                <div className="mb-4 text-center">
+                  <div className="text-base font-semibold truncate">{audioInfo.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
+                </div>
+                <div className="flex flex-col items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
+                    title={isPlaying ? "Pause" : "Play"}
+                  >
+                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
+                    <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
+                  </button>
+                  <div className="flex w-full items-center gap-3">
+                    <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={duration || 0}
+                      step={0.1}
+                      value={Number.isFinite(currentTime) ? currentTime : 0}
+                      onChange={(e) => onSeek(parseFloat(e.target.value))}
+                      className="flex-1 accent-primary"
+                      aria-label="Seek"
+                    />
+                    <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
+                  </div>
+                  <div className="flex w-full items-center gap-2">
+                    <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={volume}
+                      onChange={(e) => onVol(parseFloat(e.target.value))}
+                      className="w-full accent-primary"
+                      aria-label="Volume"
+                    />
+                  </div>
+                </div>
+                <audio ref={audioRef} src={audioInfo.url} className="hidden" />
+              </div>
+            </div>
+          ) : yamsUrl ? (
             <iframe title="External" src={yamsUrl} className="h-full w-full" />
           ) : (
             <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
@@ -430,10 +619,64 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
         </div>
       </div>
       {/* Mobile external viewer below content */}
-      {yamsUrl && (
+      {(audioLoading || audioInfo || yamsUrl) && (
         <div className="relative md:hidden mt-4">
           <div className="h-[60vh] w-full">
-            <iframe title="External" src={yamsUrl} className="h-full w-full" />
+            {audioLoading ? (
+              <div className="grid h-full place-items-center text-muted-foreground">
+                <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
+              </div>
+            ) : audioInfo ? (
+              <div className="grid h-full place-items-center p-3">
+                <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
+                  <div className="mb-4 text-center">
+                    <div className="text-base font-semibold truncate">{audioInfo.title}</div>
+                    <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
+                  </div>
+                  <div className="flex flex-col items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
+                      title={isPlaying ? "Pause" : "Play"}
+                    >
+                      <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
+                      <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
+                    </button>
+                    <div className="flex w-full items-center gap-3">
+                      <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={duration || 0}
+                        step={0.1}
+                        value={Number.isFinite(currentTime) ? currentTime : 0}
+                        onChange={(e) => onSeek(parseFloat(e.target.value))}
+                        className="flex-1 accent-primary"
+                        aria-label="Seek"
+                      />
+                      <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
+                    </div>
+                    <div className="flex w-full items-center gap-2">
+                      <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={volume}
+                        onChange={(e) => onVol(parseFloat(e.target.value))}
+                        className="w-full accent-primary"
+                        aria-label="Volume"
+                      />
+                    </div>
+                  </div>
+                  <audio ref={audioRef} src={audioInfo.url} className="hidden" />
+                </div>
+              </div>
+            ) : yamsUrl ? (
+              <iframe title="External" src={yamsUrl} className="h-full w-full" />
+            ) : null}
           </div>
         </div>
       )}

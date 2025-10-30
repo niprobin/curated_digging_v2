@@ -8,7 +8,7 @@ import { AddAlbumButton } from "@/components/albums/add-album-button";
 
 const navItems = [
   { href: "/", label: "Overview", icon: "fa-solid fa-compass" },
-  { href: "/playlists", label: "Playlists", icon: "fa-solid fa-music" },
+  { href: "/playlists", label: "Tracks", icon: "fa-solid fa-music" },
   { href: "/albums", label: "Albums", icon: "fa-solid fa-compact-disc" },
   { href: "/history", label: "History", icon: "fa-solid fa-heart" },
 ];
