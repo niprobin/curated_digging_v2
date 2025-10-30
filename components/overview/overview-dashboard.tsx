@@ -40,7 +40,7 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <i className="fa-solid fa-music" aria-hidden />
-                New tracks (7 days)
+                New tracks
               </CardTitle>
               <CardDescription>
                 {recentPlaylists.length} tracks added in the last week.
@@ -50,7 +50,6 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
               <Button asChild variant="secondary" className="w-full">
                 <Link href="/playlists">
                   Open tracks
-                  <i className="fa-solid fa-arrow-right" aria-hidden />
                 </Link>
               </Button>
             </CardContent>
@@ -59,7 +58,7 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <i className="fa-solid fa-compact-disc" aria-hidden />
-                New albums (7 days)
+                New albums
               </CardTitle>
               <CardDescription>{recentAlbums.length} albums added in the last week.</CardDescription>
             </CardHeader>
@@ -67,7 +66,6 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
               <Button asChild variant="secondary" className="w-full">
                 <Link href="/albums">
                   Explore albums
-                  <i className="fa-solid fa-arrow-right" aria-hidden />
                 </Link>
               </Button>
             </CardContent>
@@ -84,7 +82,6 @@ export function OverviewDashboard({ playlists, albums }: OverviewDashboardProps)
               <Button asChild variant="secondary" className="w-full">
                 <Link href="/history">
                   View history
-                  <i className="fa-solid fa-arrow-right" aria-hidden />
                 </Link>
               </Button>
             </CardContent>
