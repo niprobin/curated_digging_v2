@@ -155,6 +155,13 @@ export function AlbumView({ entries }: AlbumViewProps) {
     return cleaned;
   };
 
+  // Kraken (Binimum) can be sensitive to certain special characters.
+  // Remove dashes and parentheses as per requested behaviour.
+  const sanitizeKrakenQuery = (value: string) => {
+    const base = sanitizeQuery(value);
+    return base.replace(/[-()]/g, " ").replace(/\s+/g, " ").trim();
+  };
+
   const setRating = async (entry: AlbumEntry, value: number) => {
     try {
       await fetch(ALBUM_WEBHOOK_URL, {
@@ -200,6 +207,36 @@ export function AlbumView({ entries }: AlbumViewProps) {
       }
     } catch (err) {
       console.error("Failed to get external link", err);
+    } finally {
+      setExternalLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  };
+
+  const handleOpenBinimum = async (entry: AlbumEntry) => {
+    setExternalLoading((prev) => {
+      const next = new Set(prev);
+      next.add(entry.id);
+      return next;
+    });
+    try {
+      const q = sanitizeKrakenQuery(entry.name);
+      const url = `https://kraken.squid.wtf/search/?al=${encodeURIComponent(q)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Search returned ${res.status}`);
+      const json = await res.json();
+      const id: string | undefined = json?.albums?.items?.[0]?.id;
+      if (id) {
+        const link = `https://music.binimum.org/album/${id}`;
+        setYamsUrl(link);
+      } else {
+        console.warn("No binimum album id found for", entry.name);
+      }
+    } catch (err) {
+      console.error("Failed to get Binimum link", err);
     } finally {
       setExternalLoading((prev) => {
         const next = new Set(prev);
@@ -379,7 +416,13 @@ export function AlbumView({ entries }: AlbumViewProps) {
                   >
                     YAMS.TF
                   </Button>
-                  <Button variant="secondary" size="sm" type="button">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => handleOpenBinimum(entry)}
+                    disabled={externalLoading.has(entry.id)}
+                  >
                     BINIMUM
                   </Button>
                 </CardFooter>
