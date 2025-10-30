@@ -26,27 +26,41 @@ export function SiteHeader() {
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.label}
-                className={cn(
-                  "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
-                  isActive
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
-                <i className={item.icon} aria-hidden />
-                <span className="sr-only">{item.label}</span>
-              </Link>
+              <div key={item.href} className="group relative">
+                <Link
+                  href={item.href}
+                  title={item.label}
+                  className={cn(
+                    "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors",
+                    isActive
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  <i className={item.icon} aria-hidden />
+                  <span className="sr-only">{item.label}</span>
+                </Link>
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                  {item.label}
+                </span>
+              </div>
             );
           })}
         </nav>
       </div>
       <div className="flex flex-col items-center gap-2">
-        <RefreshButton iconOnly tags={["playlists", "albums"]} />
-        <AddAlbumButton iconOnly />
+        <div className="group relative">
+          <RefreshButton iconOnly tags={["playlists", "albums"]} />
+          <span className="pointer-events-none absolute left-full top-1/2 z-50 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            Refresh
+          </span>
+        </div>
+        <div className="group relative">
+          <AddAlbumButton iconOnly />
+          <span className="pointer-events-none absolute left-full top-1/2 z-50 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            Add album
+          </span>
+        </div>
       </div>
     </aside>
   );
