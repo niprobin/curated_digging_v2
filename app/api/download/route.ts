@@ -4,7 +4,7 @@ const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/download-music";
 
 async function triggerDownload() {
   const res = await fetch(WEBHOOK_URL, {
-    method: "GET",
+    method: "POST",
     cache: "no-store",
   });
   if (!res.ok) {
@@ -29,4 +29,3 @@ export async function GET() {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
-
