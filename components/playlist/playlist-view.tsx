@@ -452,22 +452,15 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                 <CardFooter className="flex items-center gap-1 py-2">
                   <Button
                     variant="secondary"
-                    size="icon"
-                    className="h-8 w-8"
-                    title="Play"
+                    size="sm"
+                    className="h-8 px-2"
+                    title="Play (Squid)"
                     onClick={() => handlePlay(entry)}
                   >
                     <i className="fa-solid fa-play" aria-hidden />
                     <span className="sr-only">Play</span>
+                    <span className="ml-1">Squid</span>
                   </Button>
-                  {entry.spotifyUrl && (
-                    <Button asChild variant="secondary" size="icon" className="h-8 w-8">
-                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                        <i className="fa-brands fa-spotify" aria-hidden />
-                        <span className="sr-only">Open in Spotify</span>
-                      </a>
-                    </Button>
-                  )}
                   <Button
                     variant="secondary"
                     size="icon"

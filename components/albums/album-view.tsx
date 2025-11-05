@@ -400,14 +400,6 @@ export function AlbumView({ entries }: AlbumViewProps) {
                   )}
                 </CardHeader>
                 <CardFooter className="flex flex-wrap gap-2">
-                  {entry.spotifyUrl && (
-                    <Button asChild variant="secondary" size="sm">
-                      <a href={entry.spotifyUrl} target="_blank" rel="noreferrer">
-                        <i className="fa-brands fa-spotify" aria-hidden />
-                        <span className="ml-2">Spotify</span>
-                      </a>
-                    </Button>
-                  )}
                   <Button
                     variant="secondary"
                     size="sm"
