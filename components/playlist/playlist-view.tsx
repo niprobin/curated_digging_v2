@@ -130,10 +130,14 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   };
 
   const ALT_HOSTS = [
+    "kraken.squid.wtf",
+    "aether.squid.wtf",
+    "triton.squid.wtf",
+    "zeus.squid.wtf",
+    "wolf.qqdl.site",
     "katze.qqdl.site",
     "maus.qqdl.site",
     "hund.qqdl.site",
-    "triton.squid.wtf",
   ] as const;
 
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
