@@ -43,6 +43,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
   } | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTrackIndex, setCurrentTrackIndex] = React.useState<number | null>(null);
   // Playlist drawer state (reuse Tracks page behaviour)
   const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/add-to-playlist";
   const PLAYLIST_OPTIONS = [
@@ -72,6 +73,11 @@ export function AlbumView({ entries }: AlbumViewProps) {
   const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  React.useEffect(() => {
+    setCurrentTrackIndex(null);
+  }, [binimumDetails]);
 
   // Simple local persistence for album ratings (1-5)
   const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
@@ -145,6 +151,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
   }, [yamsUrl]);
 
   const filtered = React.useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
     return entries.filter((entry) => {
       if (dismissedIds.has(entry.id)) {
         return false;
@@ -164,18 +171,28 @@ export function AlbumView({ entries }: AlbumViewProps) {
       if (showLikedOnly && !liked) {
         return false;
       }
+      if (normalizedSearch && !entry.name.toLowerCase().includes(normalizedSearch)) {
+        return false;
+      }
       return true;
     });
-  }, [entries, hideChecked, timeWindow, showLikedOnly, isLiked, dismissedIds]);
+  }, [entries, hideChecked, timeWindow, showLikedOnly, isLiked, dismissedIds, searchQuery]);
 
   React.useEffect(() => {
     setPage(1);
-  }, [timeWindow, hideChecked, showLikedOnly, dismissedIds, entries.length]);
+  }, [timeWindow, hideChecked, showLikedOnly, entries.length, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const start = (page - 1) * PAGE_SIZE;
   const end = start + PAGE_SIZE;
   const paged = filtered.slice(start, end);
+
+  React.useEffect(() => {
+    const maxPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (page > maxPages) {
+      setPage(maxPages);
+    }
+  }, [filtered.length, page]);
 
   const handleLike = (entry: AlbumEntry, liked: boolean) => {
     if (liked) {
@@ -285,28 +302,6 @@ export function AlbumView({ entries }: AlbumViewProps) {
     throw lastErr ?? new Error("All hosts failed");
   }
 
-  React.useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
-    const onTime = () => setCurrentTime(el.currentTime || 0);
-    const onLoaded = () => setDuration(el.duration || 0);
-    el.addEventListener("play", onPlay);
-    el.addEventListener("pause", onPause);
-    el.addEventListener("ended", onEnded);
-    el.addEventListener("timeupdate", onTime);
-    el.addEventListener("loadedmetadata", onLoaded);
-    return () => {
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("pause", onPause);
-      el.removeEventListener("ended", onEnded);
-      el.removeEventListener("timeupdate", onTime);
-      el.removeEventListener("loadedmetadata", onLoaded);
-    };
-  }, [audioInfo]);
-
   const togglePlay = () => {
     const el = audioRef.current;
     if (!el) return;
@@ -362,7 +357,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
-  const playDirect = async (url: string, title: string, artist: string) => {
+  const playDirect = React.useCallback(async (url: string, title: string, artist: string) => {
     try {
       setAudioLoading(true);
       setAudioInfo({ url, title, artist });
@@ -376,26 +371,108 @@ export function AlbumView({ entries }: AlbumViewProps) {
     } finally {
       setAudioLoading(false);
     }
-  };
+  }, []);
 
-  const playTrack = async (track: { artist: string; title: string; url?: string; id?: string }) => {
-    const { artist, title, url: urlHint, id } = track;
-    if (id) {
+  const playTrack = React.useCallback(
+    async (track: TrackForPlaylist, index?: number) => {
+      const { artist, title, url: urlHint, id } = track;
+      const resolveIndex = () => {
+        if (typeof index === "number") return index;
+        if (!binimumDetails) return null;
+        const idx = binimumDetails.tracks.findIndex((t) => {
+          if (track.id && t.id && track.id === t.id) return true;
+          return t.title === track.title && t.artist === track.artist;
+        });
+        return idx >= 0 ? idx : null;
+      };
+      const resolvedIndex = resolveIndex();
+      const finalizeIndex = () => {
+        if (resolvedIndex !== null && resolvedIndex >= 0) {
+          setCurrentTrackIndex(resolvedIndex);
+        } else {
+          setCurrentTrackIndex(null);
+        }
+      };
+      const playFromUrl = async (sourceUrl: string, resolvedTitle: string, resolvedArtist: string) => {
+        await playDirect(sourceUrl, resolvedTitle, resolvedArtist);
+        finalizeIndex();
+      };
+
+      if (id) {
+        try {
+          setAudioLoading(true);
+          setAudioInfo(null);
+          const trackJson = await fetchJsonWithFallback(
+            (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
+          );
+          const arr = Array.isArray(trackJson) ? trackJson : [trackJson];
+          const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
+          const meta = objs.find((o) => typeof o["title"] === "string");
+          const urlObj = objs.find(
+            (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
+          );
+          const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as
+            | string
+            | undefined;
+          const resolvedTitle: string = (meta?.["title"] as string | undefined) ?? title;
+          let resolvedArtist: string = artist;
+          const artistName = meta?.["artistName"];
+          if (typeof artistName === "string") {
+            resolvedArtist = artistName;
+          } else {
+            const artistObj = meta?.["artist"];
+            if (artistObj && typeof artistObj === "object") {
+              const nameVal = (artistObj as Record<string, unknown>)["name"];
+              if (typeof nameVal === "string") resolvedArtist = nameVal;
+            }
+          }
+          if (!url) throw new Error("No streaming URL");
+          await playFromUrl(url, resolvedTitle, resolvedArtist);
+          return;
+        } catch (e) {
+          console.error("Failed to fetch streaming URL via id", e);
+        } finally {
+          setAudioLoading(false);
+        }
+      }
+
+      if (urlHint) {
+        await playFromUrl(urlHint, title, artist);
+        return;
+      }
+
       try {
         setAudioLoading(true);
         setAudioInfo(null);
-        const trackJson = (await fetchJsonWithFallback(
-          (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
-        )) as unknown;
-        const arr = Array.isArray(trackJson) ? (trackJson as unknown[]) : [trackJson];
+        const q = sanitizeTrackQuery(`${artist} ${title}`);
+        const searchJson = await fetchJsonWithFallback(
+          (host) => `https://${host}/search/?s=${encodeURIComponent(q)}`,
+        );
+        const fetchedId: string | undefined = (() => {
+          if (searchJson && typeof searchJson === "object") {
+            const obj = searchJson as Record<string, unknown>;
+            const items = obj["items"];
+            if (Array.isArray(items) && items.length > 0) {
+              const first = items[0];
+              if (first && typeof first === "object") {
+                const val = (first as Record<string, unknown>)["id"];
+                if (typeof val === "string" || typeof val === "number") return String(val);
+              }
+            }
+          }
+          return undefined;
+        })();
+        if (!fetchedId) throw new Error("No id found");
+        const trackJson = await fetchJsonWithFallback(
+          (host) => `https://${host}/track/?id=${encodeURIComponent(fetchedId)}&quality=LOW`,
+        );
+        const arr = Array.isArray(trackJson) ? trackJson : [trackJson];
         const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
         const meta = objs.find((o) => typeof o["title"] === "string");
         const urlObj = objs.find(
           (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
         );
-        const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as
-          | string
-          | undefined;
+        const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as string | undefined;
         const resolvedTitle: string = (meta?.["title"] as string | undefined) ?? title;
         let resolvedArtist: string = artist;
         const artistName = meta?.["artistName"];
@@ -409,75 +486,53 @@ export function AlbumView({ entries }: AlbumViewProps) {
           }
         }
         if (!url) throw new Error("No streaming URL");
-        await playDirect(url, resolvedTitle, resolvedArtist);
-        return;
+        await playFromUrl(url, resolvedTitle, resolvedArtist);
       } catch (e) {
-        console.error("Failed to fetch streaming URL via id", e);
+        console.error("Failed to fetch streaming URL", e);
+        setAudioInfo(null);
       } finally {
         setAudioLoading(false);
       }
+    },
+    [binimumDetails, playDirect],
+  );
+
+  const playNextTrack = React.useCallback(() => {
+    if (!binimumDetails || binimumDetails.tracks.length === 0) return;
+    const current = currentTrackIndex ?? -1;
+    const nextIndex = current + 1;
+    if (nextIndex < binimumDetails.tracks.length) {
+      void playTrack(binimumDetails.tracks[nextIndex], nextIndex);
+    } else {
+      setCurrentTrackIndex(null);
+      setIsPlaying(false);
     }
-    if (urlHint) {
-      return playDirect(urlHint, title, artist);
-    }
-    try {
-      setAudioLoading(true);
-      setAudioInfo(null);
-      const q = sanitizeTrackQuery(`${artist} ${title}`);
-      const searchJson = await fetchJsonWithFallback((host) => `https://${host}/search/?s=${encodeURIComponent(q)}`);
-      const id: string | undefined = (() => {
-        if (searchJson && typeof searchJson === "object") {
-          const obj = searchJson as Record<string, unknown>;
-          const items = obj["items"];
-          if (Array.isArray(items) && items.length > 0) {
-            const first = items[0];
-            if (first && typeof first === "object") {
-              const val = (first as Record<string, unknown>)["id"];
-              if (typeof val === "string" || typeof val === "number") return String(val);
-            }
-          }
-        }
-        return undefined;
-      })();
-      if (!id) throw new Error("No id found");
-      const trackJson = (await fetchJsonWithFallback(
-        (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
-      )) as unknown;
-      const arr = Array.isArray(trackJson) ? (trackJson as unknown[]) : [trackJson];
-      const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
-      const meta = objs.find((o) => typeof o["title"] === "string");
-      const urlObj = objs.find(
-        (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
-      );
-      const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as string | undefined;
-      const resolvedTitle: string = (meta?.["title"] as string | undefined) ?? title;
-      let resolvedArtist: string = artist;
-      const artistName = meta?.["artistName"];
-      if (typeof artistName === "string") {
-        resolvedArtist = artistName;
-      } else {
-        const artistObj = meta?.["artist"];
-        if (artistObj && typeof artistObj === "object") {
-          const nameVal = (artistObj as Record<string, unknown>)["name"];
-          if (typeof nameVal === "string") resolvedArtist = nameVal;
-        }
-      }
-      if (!url) throw new Error("No streaming URL");
-      setAudioInfo({ url, title: resolvedTitle, artist: resolvedArtist });
-      setTimeout(() => {
-        try {
-          if (audioRef.current) {
-            audioRef.current.play().catch(() => setIsPlaying(false));
-          }
-        } catch {}
-      }, 100);
-    } catch (e) {
-      console.error("Failed to fetch streaming URL", e);
-      setAudioInfo(null);
-    } finally {
-      setAudioLoading(false);
-    }
-  };
+  }, [binimumDetails, currentTrackIndex, playTrack]);
+
+  React.useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      playNextTrack();
+    };
+    const onTime = () => setCurrentTime(el.currentTime || 0);
+    const onLoaded = () => setDuration(el.duration || 0);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("loadedmetadata", onLoaded);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("loadedmetadata", onLoaded);
+    };
+  }, [audioInfo, playNextTrack]);
 
   const setRating = async (entry: AlbumEntry, value: number) => {
     try {
@@ -645,7 +700,33 @@ export function AlbumView({ entries }: AlbumViewProps) {
   return (
     <div className="fixed top-0 bottom-0 right-0 left-14 md:left-16 md:flex md:gap-0 md:overflow-hidden">
       <div className="space-y-6 w-full md:w-1/2 h-full overflow-y-auto px-4 py-6">
-        <FilterToolbar />
+        <div className="space-y-3">
+          <FilterToolbar />
+          <div className="relative">
+            <label className="sr-only" htmlFor="album-search">
+              Search release name
+            </label>
+            <input
+              id="album-search"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search release name..."
+              className="w-full rounded-md border border-border bg-card p-2 pr-10 text-sm outline-none focus:border-primary"
+              autoComplete="off"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </button>
+            )}
+          </div>
+        </div>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
           No albums match your filters yet.
@@ -844,13 +925,13 @@ export function AlbumView({ entries }: AlbumViewProps) {
                   <div
                     key={`${t.title}-${idx}`}
                     className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card"
-                    onClick={() => playTrack(t)}
+                    onClick={() => playTrack(t, idx)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        playTrack(t);
+                        playTrack(t, idx);
                       }
                     }}
                   >
@@ -864,7 +945,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          playTrack(t);
+                          playTrack(t, idx);
                         }}
                         disabled={audioLoading}
                         title="Play"
@@ -1060,13 +1141,13 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 <div
                   key={`${t.title}-${idx}`}
                   className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card"
-                  onClick={() => playTrack(t)}
+                  onClick={() => playTrack(t, idx)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      playTrack(t);
+                      playTrack(t, idx);
                     }
                   }}
                 >
@@ -1080,7 +1161,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        playTrack(t);
+                        playTrack(t, idx);
                       }}
                       disabled={audioLoading}
                       title="Play"
@@ -1123,6 +1204,3 @@ export function AlbumView({ entries }: AlbumViewProps) {
     </div>
   );
 }
-
-// YAMS modal
-// Rendered at the bottom of the component tree to overlay content
