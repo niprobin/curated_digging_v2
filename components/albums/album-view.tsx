@@ -565,20 +565,9 @@ export function AlbumView({ entries }: AlbumViewProps) {
       return next;
     });
     try {
-      const q = sanitizeQuery(entry.name);
-      const searchUrl = `https://api.yams.tf/search?query=${encodeURIComponent(q)}`;
-      const res = await fetch(searchUrl);
-      if (!res.ok) throw new Error(`Search returned ${res.status}`);
-      const json = await res.json();
-      const id: string | undefined = json?.albums?.[0]?.id;
-      if (id) {
-        setYamsUrl(`https://yams.tf/#/album/1/${id}`);
-      } else {
-        // Fallback to search page if no id is found
-        setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(q)}`);
-      }
-    } catch (err) {
-      console.error("Failed to get external link", err);
+      setBinimumDetails(null);
+      const url = `https://yams.tf/#/search/${encodeURIComponent(entry.name)}`;
+      setYamsUrl(url);
     } finally {
       setExternalLoading((prev) => {
         const next = new Set(prev);
@@ -921,10 +910,15 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 <p className="text-sm text-muted-foreground">{binimumDetails.artist}</p>
               </div>
               <div className="space-y-2">
-                {binimumDetails.tracks.map((t, idx) => (
+                {binimumDetails.tracks.map((t, idx) => {
+                  const isActive = currentTrackIndex === idx;
+                  return (
                   <div
                     key={`${t.title}-${idx}`}
-                    className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card"
+                    className={clsx(
+                      "flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card",
+                      isActive && "border-primary/60 bg-primary/10"
+                    )}
                     onClick={() => playTrack(t, idx)}
                     role="button"
                     tabIndex={0}
@@ -969,7 +963,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
                       </Button>
                     </div>
                   </div>
-                ))}
+                );
+                })}
                 {binimumDetails.tracks.length === 0 && (
                   <p className="text-sm text-muted-foreground">No tracks available for this album.</p>
                 )}
@@ -1137,10 +1132,15 @@ export function AlbumView({ entries }: AlbumViewProps) {
               </div>
             )}
             <div className="space-y-2">
-              {binimumDetails.tracks.map((t, idx) => (
+              {binimumDetails.tracks.map((t, idx) => {
+                const isActive = currentTrackIndex === idx;
+                return (
                 <div
                   key={`${t.title}-${idx}`}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card"
+                  className={clsx(
+                    "flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/60 bg-card/80 p-2 hover:bg-card",
+                    isActive && "border-primary/60 bg-primary/10"
+                  )}
                   onClick={() => playTrack(t, idx)}
                   role="button"
                   tabIndex={0}
@@ -1185,7 +1185,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
                   </Button>
                   </div>
                 </div>
-              ))}
+              );
+              })}
               {binimumDetails.tracks.length === 0 && (
                 <p className="text-sm text-muted-foreground">No tracks available for this album.</p>
               )}
