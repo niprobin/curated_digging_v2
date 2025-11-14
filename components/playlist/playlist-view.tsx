@@ -472,9 +472,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                     onClick={() => {
                       setAudioInfo(null);
                       setAudioLoading(false);
-                      setYamsUrl(
-                        `https://yams.tf/#/search/${encodeURIComponent(`${entry.artist} ${entry.track}`)}`,
-                      );
+                      const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+                      setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
                     }}
                   >
                     <i className="fa-solid fa-magnifying-glass" aria-hidden />

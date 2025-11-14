@@ -566,7 +566,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
     });
     try {
       setBinimumDetails(null);
-      const url = `https://yams.tf/#/search/${encodeURIComponent(entry.name)}`;
+      const clean = sanitizeKrakenQuery(entry.name);
+      const url = `https://yams.tf/#/search/${encodeURIComponent(clean)}`;
       setYamsUrl(url);
     } finally {
       setExternalLoading((prev) => {
