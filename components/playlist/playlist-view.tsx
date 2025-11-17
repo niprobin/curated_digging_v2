@@ -57,7 +57,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const {
     state: { timeWindow, curator },
   } = useFilters();
-  const PAGE_SIZE = 10;
+  const [pageSize, setPageSize] = React.useState(10);
   const [page, setPage] = React.useState(1);
   const [drawerEntry, setDrawerEntry] = React.useState<PlaylistEntry | null>(null);
   const [yamsUrl, setYamsUrl] = React.useState<string | null>(null);
@@ -81,19 +81,51 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
   const [dismissSubmitting, setDismissSubmitting] = React.useState<Set<string>>(() => new Set());
   const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
 
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  const recomputePageSize = React.useCallback((height: number) => {
+    const estimatedRowHeight = 72;
+    const rows = Math.floor((height + 12) / estimatedRowHeight);
+    const clamped = Number.isFinite(rows) ? Math.max(5, Math.min(25, rows)) : 10;
+    setPageSize((prev) => (prev === clamped ? prev : clamped));
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const el = listRef.current;
+    if (!el) {
+      const viewport = window.innerHeight || 900;
+      recomputePageSize(Math.max(260, viewport - 320));
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      recomputePageSize(entry.contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [recomputePageSize]);
+
   const filtered = React.useMemo(() => {
     return entries.filter((entry) => { if (dismissedIds.has(entry.id)) { return false; } if (entry.checked) { return false; } if (entry.liked) { return false; } if (curator && entry.curator !== curator) { return false; } if (!filterByTimeWindow(entry.addedAt, timeWindow)) { return false; } return true; });
   }, [entries, curator, timeWindow, dismissedIds]);
 
   React.useEffect(() => {
-    // Reset to first page when filters or dataset change
+    // Reset to first page when filters, data, or pagination size change
     setPage(1);
-  }, [curator, timeWindow, dismissedIds, entries.length]);
+  }, [curator, timeWindow, dismissedIds, entries.length, pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const start = (page - 1) * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
   const paged = filtered.slice(start, end);
+
+  React.useEffect(() => {
+    const maxPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > maxPages) {
+      setPage(maxPages);
+    }
+  }, [filtered.length, page, pageSize]);
 
   const closeDrawer = React.useCallback(() => {
     setDrawerEntry(null);
@@ -370,150 +402,157 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
 
   return (
     <div className="fixed top-0 bottom-0 right-0 left-14 md:left-16 md:flex md:gap-0 md:overflow-hidden">
-      <div className={clsx("space-y-4 w-full md:w-1/2 h-full overflow-y-auto px-4 py-6") }>
-      {/* Split filters into two matching cards */}
-      <FilterToolbar showTimeWindow />
-      <FilterToolbar curators={curators} showCuratorFilter showTimeWindow={false} />
-      {feedback && (
-        <div className="pointer-events-none fixed bottom-4 left-4 z-50">
-          <div
-            className={clsx(
-              "pointer-events-auto rounded-md border p-3 text-sm shadow-lg",
-              feedback.type === "success"
-                ? "border-emerald-300/60 bg-emerald-50 text-emerald-900"
-                : "border-rose-300/60 bg-rose-50 text-rose-900",
-            )}
-            role="status"
-          >
-            {feedback.message}
+      <div className="flex h-full w-full flex-col gap-4 overflow-hidden px-4 py-6 md:w-1/2">
+        <div className="space-y-3">
+          {/* Split filters into two matching cards */}
+          <FilterToolbar showTimeWindow />
+          <FilterToolbar curators={curators} showCuratorFilter showTimeWindow={false} />
+        </div>
+        {feedback && (
+          <div className="pointer-events-none fixed bottom-4 left-4 z-50">
+            <div
+              className={clsx(
+                "pointer-events-auto rounded-md border p-3 text-sm shadow-lg",
+                feedback.type === "success"
+                  ? "border-emerald-300/60 bg-emerald-50 text-emerald-900"
+                  : "border-rose-300/60 bg-rose-50 text-rose-900",
+              )}
+              role="status"
+            >
+              {feedback.message}
+            </div>
           </div>
-        </div>
-      )}
-      {filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
-          Nothing to show. Adjust your filters or check back later.
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border/70 bg-card/30">
-          <div className="divide-y divide-border/60">
-            {paged.map((entry, idx) => {
-              if (dismissedIds.has(entry.id)) {
-                return null;
-              }
-              const rowNumber = start + idx + 1;
-              const isChecked = entry.checked;
-              const isDismissLoading = dismissSubmitting.has(entry.id);
-              return (
-                <div
-                  key={entry.id}
-                  className={clsx("group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors", "hover:bg-card/70", isChecked && "opacity-60")}
-                >
-                  <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-medium text-foreground">{entry.track}</span>
-                      <span className="hidden text-xs text-muted-foreground sm:inline">&mdash; {entry.artist}</span>
+        )}
+        <div ref={listRef} className="flex flex-1 flex-col overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
+              Nothing to show. Adjust your filters or check back later.
+            </div>
+          ) : (
+          <div className="flex-1 overflow-hidden rounded-lg border border-border/70 bg-card/30">
+            <div className="divide-y divide-border/60">
+              {paged.map((entry, idx) => {
+                if (dismissedIds.has(entry.id)) {
+                  return null;
+                }
+                const rowNumber = start + idx + 1;
+                const isChecked = entry.checked;
+                const isDismissLoading = dismissSubmitting.has(entry.id);
+                return (
+                  <div
+                    key={entry.id}
+                    className={clsx(
+                      "group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors",
+                      "hover:bg-card/70",
+                      isChecked && "opacity-60",
+                    )}
+                  >
+                    <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-medium text-foreground">{entry.track}</span>
+                        <span className="hidden text-xs text-muted-foreground sm:inline">&mdash; {entry.artist}</span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="truncate text-muted-foreground sm:hidden">{entry.artist}</span>
+                        <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
+                          {entry.curator}
+                        </Badge>
+                        <span className="text-muted-foreground">&middot;</span>
+                        <span className="capitalize">{formatRelativeDate(entry.addedAt)}</span>
+                        {isChecked && (
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="truncate text-muted-foreground sm:hidden">{entry.artist}</span>
-                      <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
-                        {entry.curator}
-                      </Badge>
-                      <span className="text-muted-foreground">&middot;</span>
-                      <span className="capitalize">{formatRelativeDate(entry.addedAt)}</span>
-                      {isChecked && (
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
-                      )}
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-primary hover:text-primary"
+                        title="Play preview"
+                        onClick={() => handlePlay(entry)}
+                      >
+                        <i className="fa-solid fa-play" aria-hidden />
+                        <span className="sr-only">Play</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Search on YAMS.TF"
+                        onClick={() => {
+                          setAudioInfo(null);
+                          setAudioLoading(false);
+                          const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+                          setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
+                        }}
+                      >
+                        <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                        <span className="sr-only">Search</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Add to playlist"
+                        onClick={() => {
+                          setDrawerEntry(entry);
+                          setSelectedPlaylist(null);
+                          setSubmitError(null);
+                        }}
+                      >
+                        <i className="fa-solid fa-plus" aria-hidden />
+                        <span className="sr-only">Add to playlist</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Mark as checked"
+                        onClick={() => handleDismiss(entry)}
+                        disabled={isDismissLoading}
+                      >
+                        <i className="fa-solid fa-xmark" aria-hidden />
+                        <span className="sr-only">Mark as checked</span>
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-primary hover:text-primary"
-                      title="Play preview"
-                      onClick={() => handlePlay(entry)}
-                    >
-                      <i className="fa-solid fa-play" aria-hidden />
-                      <span className="sr-only">Play</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Search on YAMS.TF"
-                      onClick={() => {
-                        setAudioInfo(null);
-                        setAudioLoading(false);
-                        const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-                        setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
-                      }}
-                    >
-                      <i className="fa-solid fa-magnifying-glass" aria-hidden />
-                      <span className="sr-only">Search</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Add to playlist"
-                      onClick={() => {
-                        setDrawerEntry(entry);
-                        setSelectedPlaylist(null);
-                        setSubmitError(null);
-                      }}
-                    >
-                      <i className="fa-solid fa-plus" aria-hidden />
-                      <span className="sr-only">Add to playlist</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Mark as checked"
-                      onClick={() => handleDismiss(entry)}
-                      disabled={isDismissLoading}
-                    >
-                      <i className="fa-solid fa-xmark" aria-hidden />
-                      <span className="sr-only">Mark as checked</span>
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
-          <div>
-            {filtered.length === 0 ? null : (
+        )}
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
+            <div>
+              {filtered.length === 0 ? null : (
+                <span>
+                  {Math.min(start + 1, filtered.length)}-{Math.min(end, filtered.length)} of {filtered.length}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Prev
+              </Button>
               <span>
-                {Math.min(start + 1, filtered.length)}–{Math.min(end, filtered.length)} of {filtered.length}
+                Page {page} of {totalPages}
               </span>
-            )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              Prev
-            </Button>
-            <span>
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
-      {drawerEntry && (
+        )}
+      </div>{drawerEntry && (
         <div className="fixed inset-0 z-50 flex">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
@@ -714,5 +753,9 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     </div>
   );
 }
+
+
+
+
 
 

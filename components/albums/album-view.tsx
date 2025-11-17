@@ -52,7 +52,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
   const {
     state: { timeWindow, showLikedOnly },
   } = useFilters();
-  const PAGE_SIZE = 10;
+  const [pageSize, setPageSize] = React.useState(5);
   const [page, setPage] = React.useState(1);
   const { isLiked, like, unlike } = useLikedHistory();
   const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
@@ -210,19 +210,44 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   React.useEffect(() => {
     setPage(1);
-  }, [timeWindow, showLikedOnly, entries.length, searchQuery]);
+  }, [timeWindow, showLikedOnly, entries.length, searchQuery, pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const start = (page - 1) * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
+  const listRef = React.useRef<HTMLDivElement | null>(null);
+  const recomputePageSize = React.useCallback((height: number) => {
+    const estimatedRowHeight = 118;
+    const rows = Math.floor(height / estimatedRowHeight);
+    const clamped = Number.isFinite(rows) ? Math.max(3, Math.min(12, rows)) : 5;
+    setPageSize((prev) => (prev === clamped ? prev : clamped));
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const el = listRef.current;
+    if (!el) {
+      const viewport = window.innerHeight || 900;
+      recomputePageSize(Math.max(320, viewport - 360));
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      recomputePageSize(entry.contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [recomputePageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
   const paged = filtered.slice(start, end);
 
   React.useEffect(() => {
-    const maxPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const maxPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     if (page > maxPages) {
       setPage(maxPages);
     }
-  }, [filtered.length, page]);
+  }, [filtered.length, page, pageSize]);
 
   const handleLike = (entry: AlbumEntry, liked: boolean) => {
     if (liked) {
@@ -727,7 +752,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   return (
     <div className="fixed top-0 bottom-0 right-0 left-14 md:left-16 md:flex md:gap-0 md:overflow-hidden">
-      <div className="space-y-6 w-full md:w-1/2 h-full overflow-y-auto px-4 py-6">
+      <div className="flex h-full w-full flex-col gap-6 overflow-hidden px-4 py-6 md:w-1/2">
         <div className="space-y-3">
           <FilterToolbar />
           <div className="relative">
@@ -755,18 +780,19 @@ export function AlbumView({ entries }: AlbumViewProps) {
             )}
           </div>
         </div>
-      {filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
-          No albums match your filters yet.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {paged.map((entry) => {
+        <div ref={listRef} className="flex flex-1 flex-col overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
+              No albums match your filters yet.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {paged.map((entry) => {
             const liked = isLiked(entry.id, entry.liked) || entry.liked;
             const rating = ratings[entry.id] ?? 0;
             const isExternalLoading = externalLoading.has(entry.id);
             const cover = entry.coverUrl ? (
-              <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md md:h-24 md:w-24">
+              <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-border/70 bg-card md:h-20 md:w-20">
                 <Image
                   src={entry.coverUrl}
                   alt={`Artwork for ${entry.name}`}
@@ -776,48 +802,62 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 />
               </div>
             ) : (
-              <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground md:h-24 md:w-24">
+              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-border/70 bg-card text-muted-foreground md:h-20 md:w-20">
                 <i className="fa-solid fa-compact-disc text-xl" aria-hidden />
               </div>
             );
             return (
-              <div key={entry.id} className="rounded-xl border border-border/80 bg-card/60 p-3">
-                <div className="flex items-start gap-4">
+              <div
+                key={entry.id}
+                className="rounded-lg border border-border/60 bg-card/30 px-3 py-3 transition hover:bg-card/60"
+              >
+                <div className="flex items-center gap-3">
                   {cover}
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 space-y-1">
-                        <h3 className="truncate text-lg font-semibold text-foreground">{entry.name}</h3>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1 text-sm">
+                        <h3 className="truncate text-base font-semibold text-foreground">{entry.name}</h3>
                         {entry.releaseDate && (
-                          <span className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             Released{" "}
                             <span className="font-medium text-foreground">
                               {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
                             </span>
-                          </span>
+                          </p>
                         )}
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
                           {entry.checked && (
-                            <span className="uppercase tracking-wide text-muted-foreground">Checked</span>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700 focus-visible:ring-rose-500/60 focus-visible:!text-rose-700 transition-colors"
-                          onClick={() => handleDismiss(entry)}
+                          className="text-primary hover:text-primary"
+                          title="Open Binimum"
+                          onClick={() => handleOpenBinimum(entry)}
+                          disabled={isExternalLoading}
                         >
-                          <i className="fa-solid fa-xmark" aria-hidden />
-                          <span className="sr-only">Remove</span>
+                          <i className="fa-solid fa-play" aria-hidden />
+                          <span className="sr-only">Open Binimum</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Search on YAMS.TF"
+                          onClick={() => handleOpenExternal(entry)}
+                          disabled={isExternalLoading}
+                        >
+                          <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                          <span className="sr-only">Search YAMS.TF</span>
                         </Button>
                         <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 hover:!text-amber-700 focus-visible:ring-amber-500/60 hover:!text-amber-700 transition-colors"
                             aria-pressed={liked}
                             onClick={() => setOpenRatingForId((id) => (id === entry.id ? null : entry.id))}
                             aria-haspopup="dialog"
@@ -853,6 +893,16 @@ export function AlbumView({ entries }: AlbumViewProps) {
                             </div>
                           )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-rose-600 hover:text-rose-700"
+                          onClick={() => handleDismiss(entry)}
+                          title="Dismiss album"
+                        >
+                          <i className="fa-solid fa-xmark" aria-hidden />
+                          <span className="sr-only">Dismiss album</span>
+                        </Button>
                       </div>
                     </div>
                     {(rating || liked) && (
@@ -869,27 +919,20 @@ export function AlbumView({ entries }: AlbumViewProps) {
                         )}
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => handleOpenExternal(entry)} disabled={isExternalLoading}>
-                        YAMS.TF
-                      </Button>
-                      <Button variant="secondary" size="sm" type="button" onClick={() => handleOpenBinimum(entry)} disabled={isExternalLoading}>
-                        BINIMUM
-                      </Button>
-                    </div>
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
-      )}
+          )}
+        </div>
       {filtered.length > 0 && (
         <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
           <div>
             {filtered.length === 0 ? null : (
               <span>
-                {Math.min(start + 1, filtered.length)}–{Math.min(end, filtered.length)} of {filtered.length}
+                {Math.min(start + 1, filtered.length)}-{Math.min(end, filtered.length)} of {filtered.length}
               </span>
             )}
           </div>
@@ -1068,7 +1111,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 <audio ref={audioRef} src={audioInfo.url} className="hidden" />
               </>
             ) : (
-              <div className="text-xs text-muted-foreground">Select a track to play…</div>
+              <div className="text-xs text-muted-foreground">Select a track to play</div>
             )}
           </div>
         </div>
@@ -1274,3 +1317,5 @@ export function AlbumView({ entries }: AlbumViewProps) {
     </div>
   );
 }
+
+
