@@ -4,7 +4,6 @@ import * as React from "react";
 import clsx from "clsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { FilterToolbar } from "@/components/filters/filter-toolbar";
 import { useFilters } from "@/components/filters/filter-provider";
 import { filterByTimeWindow } from "@/lib/filters";
@@ -395,94 +394,91 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           Nothing to show. Adjust your filters or check back later.
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-1">
-          {paged.map((entry) => {
-            if (dismissedIds.has(entry.id)) {
-              return null;
-            }
-            const isChecked = entry.checked;
-            const isDismissLoading = dismissSubmitting.has(entry.id);
-            return (
-              <Card key={entry.id} className="flex flex-col">
-                <CardHeader className="flex flex-col gap-2 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-1 flex-col gap-1">
-                      <CardTitle className="text-lg font-medium leading-snug text-foreground break-words whitespace-normal">
-                        {entry.artist}
-                        <span className="px-2 text-muted-foreground">-</span>
-                        {entry.track}
-                      </CardTitle>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
-                          {entry.curator}
-                        </Badge>
-                        <span className="text-muted-foreground">•</span>
-                        <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
-                        {isChecked && (
-                          <Badge variant="outline" className="h-5 w-fit border-dashed px-1.5 text-[10px] text-muted-foreground">
-                            Already listened
-                          </Badge>
-                        )}
-                      </div>
+        <div className="rounded-lg border border-border/70 bg-card/30">
+          <div className="divide-y divide-border/60">
+            {paged.map((entry, idx) => {
+              if (dismissedIds.has(entry.id)) {
+                return null;
+              }
+              const rowNumber = start + idx + 1;
+              const isChecked = entry.checked;
+              const isDismissLoading = dismissSubmitting.has(entry.id);
+              return (
+                <div
+                  key={entry.id}
+                  className={clsx("group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors", "hover:bg-card/70", isChecked && "opacity-60")}
+                >
+                  <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-medium text-foreground">{entry.track}</span>
+                      <span className="hidden text-xs text-muted-foreground sm:inline">&mdash; {entry.artist}</span>
                     </div>
-                    <div className="flex items-center gap-1 self-start">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full text-rose-600 ring-1 ring-rose-300/40 hover:bg-rose-50 hover:ring-rose-400/60 hover:!text-rose-700 focus-visible:ring-rose-500/60 focus-visible:!text-rose-700 transition-colors"
-                        onClick={() => handleDismiss(entry)}
-                        disabled={isDismissLoading}
-                      >
-                        <i className="fa-solid fa-xmark" aria-hidden />
-                        <span className="sr-only">Close</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full text-amber-600 ring-1 ring-amber-300/40 hover:bg-amber-50 hover:ring-amber-400/60 hover:!text-amber-700 focus-visible:ring-amber-500/60 focus-visible:!text-amber-700 transition-colors"
-                        onClick={() => {
-                          setDrawerEntry(entry);
-                          setSelectedPlaylist(null);
-                          setSubmitError(null);
-                        }}
-                      >
-                        <i className="fa-solid fa-plus" aria-hidden />
-                        <span className="sr-only">Add to playlist</span>
-                      </Button>
-                      {/* External actions moved to footer to match album cards */}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="truncate text-muted-foreground sm:hidden">{entry.artist}</span>
+                      <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
+                        {entry.curator}
+                      </Badge>
+                      <span className="text-muted-foreground">&middot;</span>
+                      <span className="capitalize">{formatRelativeDate(entry.addedAt)}</span>
+                      {isChecked && (
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
+                      )}
                     </div>
                   </div>
-                </CardHeader>
-                <CardFooter className="flex items-center gap-1 py-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-8 px-2"
-                    title="Play (Squid)"
-                    onClick={() => handlePlay(entry)}
-                  >
-                    <i className="fa-solid fa-play" aria-hidden />
-                    <span className="sr-only">Play</span>
-                    <span className="ml-1">Squid</span>
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => {
-                      setAudioInfo(null);
-                      setAudioLoading(false);
-                      const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-                      setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
-                    }}
-                  >
-                    <i className="fa-solid fa-magnifying-glass" aria-hidden />
-                    <span className="sr-only">Search on YAMS.TF</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })}
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-primary hover:text-primary"
+                      title="Play preview"
+                      onClick={() => handlePlay(entry)}
+                    >
+                      <i className="fa-solid fa-play" aria-hidden />
+                      <span className="sr-only">Play</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Search on YAMS.TF"
+                      onClick={() => {
+                        setAudioInfo(null);
+                        setAudioLoading(false);
+                        const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+                        setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
+                      }}
+                    >
+                      <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                      <span className="sr-only">Search</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Add to playlist"
+                      onClick={() => {
+                        setDrawerEntry(entry);
+                        setSelectedPlaylist(null);
+                        setSubmitError(null);
+                      }}
+                    >
+                      <i className="fa-solid fa-plus" aria-hidden />
+                      <span className="sr-only">Add to playlist</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Mark as checked"
+                      onClick={() => handleDismiss(entry)}
+                      disabled={isDismissLoading}
+                    >
+                      <i className="fa-solid fa-xmark" aria-hidden />
+                      <span className="sr-only">Mark as checked</span>
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {filtered.length > 0 && (
