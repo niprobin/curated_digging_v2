@@ -23,7 +23,8 @@ export async function POST(req: Request) {
       maxAge,
     });
     return res;
-  } catch (e) {
+  } catch (error) {
+    console.error("Login request failed", error);
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 }

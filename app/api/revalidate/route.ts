@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     revalidateTag(tag);
     return new Response(JSON.stringify({ revalidated: true, tag }), { status: 200 });
   } catch (error) {
+    console.error("Revalidate request failed", error);
     return new Response(JSON.stringify({ error: "Invalid request" }), { status: 400 });
   }
 }
-

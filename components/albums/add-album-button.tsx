@@ -25,7 +25,7 @@ export function AddAlbumButton({ iconOnly = false }: { iconOnly?: boolean } = {}
       if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
       setOpen(false);
       setValue("");
-    } catch (err) {
+    } catch {
       setError("Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);

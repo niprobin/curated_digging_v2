@@ -13,7 +13,7 @@ export function DownloadButton({ iconOnly = false }: { iconOnly?: boolean }) {
       try {
         const res = await fetch("/api/download", { method: "POST" });
         if (!res.ok) throw new Error("Download trigger failed");
-      } catch (e) {
+      } catch {
         setError("Download failed. Try again.");
       }
     });
@@ -33,4 +33,3 @@ export function DownloadButton({ iconOnly = false }: { iconOnly?: boolean }) {
     </div>
   );
 }
-

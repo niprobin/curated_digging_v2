@@ -31,7 +31,7 @@ export default function LoginPage() {
         if (!res.ok) throw new Error("Login failed");
         router.push(redirectTo || "/");
         router.refresh();
-      } catch (err) {
+      } catch {
         setError("Invalid passcode");
       }
     });

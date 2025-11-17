@@ -33,7 +33,7 @@ export function RefreshButton(props: RefreshButtonProps & { iconOnly?: boolean }
           }
         }
         router.refresh();
-      } catch (e) {
+      } catch {
         setError("Refresh failed. Try again.");
       }
     });

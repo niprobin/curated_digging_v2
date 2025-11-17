@@ -16,7 +16,8 @@ export async function POST() {
   try {
     await triggerDownload();
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch (error) {
+    console.error("Download webhook POST failed", error);
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
@@ -25,7 +26,8 @@ export async function GET() {
   try {
     await triggerDownload();
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch (error) {
+    console.error("Download webhook GET failed", error);
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

@@ -15,8 +15,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const year = new Date().getFullYear();
-
 export const metadata: Metadata = {
   title: "Curated Digging",
   description:
