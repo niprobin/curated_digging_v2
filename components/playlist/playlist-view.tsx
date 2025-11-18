@@ -476,20 +476,34 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         <i className="fa-solid fa-play" aria-hidden />
                         <span className="sr-only">Play</span>
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Search on YAMS.TF"
-                        onClick={() => {
-                          setAudioInfo(null);
-                          setAudioLoading(false);
-                          const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-                          setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
-                        }}
-                      >
-                        <i className="fa-solid fa-magnifying-glass" aria-hidden />
-                        <span className="sr-only">Search</span>
-                      </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Search on YAMS.TF"
+                      onClick={() => {
+                        setAudioInfo(null);
+                        setAudioLoading(false);
+                        const yamsQuery = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+                        setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
+                      }}
+                    >
+                      <i className="fa-solid fa-1" aria-hidden />
+                      <span className="sr-only">Search YAMS.TF</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Search on Monochrome.tf"
+                      onClick={() => {
+                        setAudioInfo(null);
+                        setAudioLoading(false);
+                        const query = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
+                        setYamsUrl(`https://monochrome.tf/#search/${encodeURIComponent(query)}`);
+                      }}
+                    >
+                      <i className="fa-solid fa-2" aria-hidden />
+                      <span className="sr-only">Search on Monochrome</span>
+                    </Button>
                       <Button
                         variant="ghost"
                         size="icon"
