@@ -788,14 +788,24 @@ export function AlbumView({ entries }: AlbumViewProps) {
           ) : (
             <div className="space-y-2">
               {paged.map((entry) => {
-            const liked = isLiked(entry.id, entry.liked) || entry.liked;
-            const rating = ratings[entry.id] ?? 0;
-            const isExternalLoading = externalLoading.has(entry.id);
-            const cover = entry.coverUrl ? (
-              <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-border/70 bg-card md:h-20 md:w-20">
-                <Image
-                  src={entry.coverUrl}
-                  alt={`Artwork for ${entry.name}`}
+                const liked = isLiked(entry.id, entry.liked) || entry.liked;
+                const rating = ratings[entry.id] ?? 0;
+                const isExternalLoading = externalLoading.has(entry.id);
+                const nameParts = entry.name
+                  .split("-")
+                  .map((part) => part.trim())
+                  .filter(Boolean);
+                let albumTitle = entry.name;
+                let albumArtistLabel: string | null = null;
+                if (nameParts.length > 1) {
+                  albumTitle = nameParts.pop() ?? entry.name;
+                  albumArtistLabel = nameParts.join(" - ");
+                }
+                const cover = entry.coverUrl ? (
+                  <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-border/70 bg-card md:h-20 md:w-20">
+                    <Image
+                      src={entry.coverUrl}
+                      alt={`Artwork for ${entry.name}`}
                   fill
                   className="object-cover"
                   sizes="96px"
@@ -816,20 +826,27 @@ export function AlbumView({ entries }: AlbumViewProps) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 space-y-1 text-sm">
-                        <h3 className="truncate text-base font-semibold text-foreground">{entry.name}</h3>
-                        {entry.releaseDate && (
-                          <p className="text-xs text-muted-foreground">
-                            Released{" "}
-                            <span className="font-medium text-foreground">
-                              {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
-                            </span>
-                          </p>
+                        <h3 className="truncate text-base font-semibold text-foreground">{albumTitle}</h3>
+                        {albumArtistLabel && (
+                          <p className="truncate text-[13px] text-muted-foreground">{albumArtistLabel}</p>
                         )}
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
-                          {entry.checked && (
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
+                        <div className="space-y-0.5 text-[11px] text-muted-foreground opacity-80">
+                          {entry.releaseDate && (
+                            <p>
+                              Released{" "}
+                              <span className="font-medium text-foreground/90">
+                                {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
+                              </span>
+                            </p>
                           )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
+                            {entry.checked && (
+                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                Checked
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">

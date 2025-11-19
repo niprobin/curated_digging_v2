@@ -449,12 +449,11 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                   >
                     <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
+                      <div className="flex min-w-0 flex-col">
                         <span className="truncate font-medium text-foreground">{entry.track}</span>
-                        <span className="hidden text-xs text-muted-foreground sm:inline">&mdash; {entry.artist}</span>
+                        <span className="truncate text-[13px] text-muted-foreground">{entry.artist}</span>
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span className="truncate text-muted-foreground sm:hidden">{entry.artist}</span>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground opacity-80">
                         <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px]">
                           {entry.curator}
                         </Badge>
