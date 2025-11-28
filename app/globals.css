@@ -76,6 +76,16 @@
   button {
     font-family: inherit;
   }
+
+  button,
+  a,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  summary {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {
