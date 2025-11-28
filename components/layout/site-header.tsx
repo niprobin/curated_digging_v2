@@ -5,14 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RefreshButton } from "@/components/refresh/refresh-button";
 import { DownloadButton } from "@/components/download/download-button";
-
-const navItems = [
-  { href: "/", label: "Overview", icon: "fa-solid fa-compass" },
-  { href: "/playlists", label: "Tracks", icon: "fa-solid fa-music" },
-  { href: "/albums", label: "Albums", icon: "fa-solid fa-compact-disc" },
-  { href: "/history", label: "History", icon: "fa-solid fa-heart" },
-  { href: "/add-to-list", label: "Add to List", icon: "fa-solid fa-plus" },
-];
+import { NAV_ITEMS } from "@/components/layout/nav-items";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -24,7 +17,7 @@ export function SiteHeader() {
           <span className="sr-only">Curated Digging</span>
         </Link>
         <nav className="flex flex-col items-center gap-2">
-          {navItems.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             return (
               <div key={item.href} className="group relative">

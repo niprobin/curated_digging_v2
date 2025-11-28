@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-type Tag = "playlists" | "albums";
+type Tag = "playlists" | "albums" | "history";
 
 type RefreshButtonProps =
   | { tag: Tag; tags?: never }
