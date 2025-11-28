@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RefreshButton } from "@/components/refresh/refresh-button";
 import { DownloadButton } from "@/components/download/download-button";
-import { AddAlbumButton } from "@/components/albums/add-album-button";
 
 const navItems = [
   { href: "/", label: "Overview", icon: "fa-solid fa-compass" },
   { href: "/playlists", label: "Tracks", icon: "fa-solid fa-music" },
   { href: "/albums", label: "Albums", icon: "fa-solid fa-compact-disc" },
   { href: "/history", label: "History", icon: "fa-solid fa-heart" },
+  { href: "/add-to-list", label: "Add to List", icon: "fa-solid fa-plus" },
 ];
 
 export function SiteHeader() {
@@ -60,12 +60,6 @@ export function SiteHeader() {
           <RefreshButton iconOnly tags={["playlists", "albums"]} />
           <span className="pointer-events-none absolute left-full top-1/2 z-50 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
             Refresh
-          </span>
-        </div>
-        <div className="group relative">
-          <AddAlbumButton iconOnly />
-          <span className="pointer-events-none absolute left-full top-1/2 z-50 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[11px] font-medium text-background opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-            Add album
           </span>
         </div>
       </div>

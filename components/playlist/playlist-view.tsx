@@ -9,6 +9,7 @@ import { useFilters } from "@/components/filters/filter-provider";
 import { filterByTimeWindow } from "@/lib/filters";
 import { formatRelativeDate } from "@/lib/utils";
 import type { PlaylistEntry } from "@/lib/data";
+import { PLAYLIST_OPTIONS, type PlaylistOption } from "@/components/playlist/playlist-options";
 
 interface PlaylistViewProps {
   entries: PlaylistEntry[];
@@ -17,30 +18,6 @@ interface PlaylistViewProps {
 
 const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/add-to-playlist";
 const TRACK_CHECK_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/track-checked";
-
-const PLAYLIST_OPTIONS = [
-  "Afrobeat & Highlife",
-  "Beats",
-  "Bossa Nova",
-  "Brazilian Music",
-  "Disco Dancefloor",
-  "DNB",
-  "Downtempo Trip-hop",
-  "Funk & Rock",
-  "Hip-hop",
-  "House Chill",
-  "House Dancefloor",
-  "Jazz Classic",
-  "Jazz Funk",
-  "Latin Music",
-  "Morning Chill",
-  "Neo Soul",
-  "Reggae",
-  "RNB Mood",
-  "Soul Oldies",
-] as const;
-
-type PlaylistOption = (typeof PLAYLIST_OPTIONS)[number];
 
 function extractSpotifyId(entry: PlaylistEntry) {
   if (entry.spotifyId) return entry.spotifyId;
