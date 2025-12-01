@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 type SheetRow = {
   track?: string;
   date_liked?: string;
@@ -13,6 +15,7 @@ type HistoryEntry = {
   playlist: string;
   downloadedTrack: string;
   matchScore: number;
+  downloaded: string;
 };
 
 const HISTORY_SOURCE =
@@ -73,16 +76,21 @@ async function getHistoryEntries(): Promise<HistoryEntry[]> {
     throw new Error(`Failed to load history: ${response.status}`);
   }
   const rows = (await response.json()) as SheetRow[];
-  const parsed = rows
-    .filter((row) => String(row.downloaded).toLowerCase() === "true")
-    .map((row) => ({
+  const parsed = rows.map((row) => {
+    const downloaded = String(row.downloaded ?? "").trim().toLowerCase();
+    const downloadedTrack = (row["downloaded track"] ?? row.downloaded_track ?? "").trim();
+    const matchScore =
+      downloaded === "true" ? calculateMatchScore(row.track, row["downloaded track"] ?? row.downloaded_track) : 1;
+    return {
       track: (row.track ?? "").trim(),
       dateLiked: row.date_liked ?? "",
       playlist: row.playlist ?? "",
-      downloadedTrack: (row["downloaded track"] ?? row.downloaded_track ?? "").trim(),
-      matchScore: calculateMatchScore(row.track, row["downloaded track"] ?? row.downloaded_track),
+      downloadedTrack,
+      matchScore,
+      downloaded,
       sortKey: parseDateValue(row.date_liked),
-    }));
+    };
+  });
   parsed.sort((a, b) => b.sortKey - a.sortKey);
   return parsed.map(({ sortKey, ...entry }) => entry);
 }
@@ -94,7 +102,7 @@ export default async function HistoryPage() {
       <header className="flex items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">Downloaded history</h1>
         <a
-          href="https://docs.google.com/spreadsheets/d/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/edit?gid=185091005#gid=185091005"
+          href="https://docs.google.com/spreadsheets/d/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/edit?gid=2115605479#gid=2115605479"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex h-8 w-8 items-center justify-center rounded bg-muted text-white transition hover:bg-foreground"
@@ -112,6 +120,7 @@ export default async function HistoryPage() {
               <th className="px-3 py-2 font-medium">Date liked</th>
               <th className="px-3 py-2 font-medium">Playlist</th>
               <th className="px-3 py-2 font-medium">Downloaded track</th>
+              <th className="px-3 py-2 font-medium text-right">Downloaded</th>
             </tr>
           </thead>
           <tbody>
@@ -143,6 +152,22 @@ export default async function HistoryPage() {
                 <td className="px-3 py-2 text-muted-foreground">{entry.dateLiked || "-"}</td>
                 <td className="px-3 py-2">{entry.playlist || "-"}</td>
                 <td className="px-3 py-2 text-muted-foreground">{entry.downloadedTrack || "-"}</td>
+                <td className="px-3 py-2 text-right">
+                  <span
+                    className={cn(
+                      "inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs",
+                      entry.downloaded === "true"
+                        ? "border-emerald-200 text-emerald-700"
+                        : "border-muted-foreground/40 text-muted-foreground",
+                    )}
+                    title={entry.downloaded === "true" ? "Downloaded" : "Pending"}
+                  >
+                    <i className={entry.downloaded === "true" ? "fa-solid fa-check" : "fa-solid fa-clock"} aria-hidden />
+                    <span className="sr-only">
+                      {entry.downloaded === "true" ? "Downloaded" : "Pending"}
+                    </span>
+                  </span>
+                </td>
               </tr>
             ))}
             {entries.length === 0 && (
