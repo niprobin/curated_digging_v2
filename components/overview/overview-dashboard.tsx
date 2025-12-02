@@ -98,11 +98,11 @@ export function OverviewDashboard() {
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-border bg-card p-5 shadow-sm space-y-3">
-          <h2 className="text-lg font-semibold">Add to albums</h2>
+          <h2 className="text-lg font-semibold">Next album to listen to</h2>
           <AddToListForm />
         </div>
         <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Add to songs</h2>
+          <h2 className="text-lg font-semibold">Add a song I liked</h2>
           <AddToSongsForm />
         </div>
       </div>
@@ -110,16 +110,14 @@ export function OverviewDashboard() {
         <h2 className="text-lg font-semibold">Search</h2>
         <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={onSearch}>
           <div className="flex-1">
-            <label className="block text-sm font-medium text-foreground" htmlFor="azuracast-search">
-              Search query
-            </label>
             <input
               id="azuracast-search"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search query"
               className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm outline-none focus:border-primary"
-              placeholder="Artist, track, or station"
+              placeholder="Artist or track"
             />
           </div>
           <Button type="submit" disabled={!search.trim() || searching}>
