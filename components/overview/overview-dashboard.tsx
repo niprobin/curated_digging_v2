@@ -1,14 +1,59 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { cn } from "@/lib/utils";
 import { AddToListForm } from "@/components/add-to-list/add-to-list-form";
 import { AddToSongsForm } from "@/components/add-to-list/add-to-songs-form";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+type SearchRow = {
+  text?: string;
+  media?: {
+    playlists?: { id: number; name: string }[];
+  };
+};
 
 export function OverviewDashboard() {
   const totalItems = NAV_ITEMS.length;
+  const [search, setSearch] = React.useState("");
+  const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
+  const [searchResults, setSearchResults] = React.useState<SearchRow[]>([]);
+
+  const onSearch = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!search.trim()) return;
+    setSearching(true);
+    setSearchError(null);
+    setSearchResults([]);
+    try {
+      const res = await fetch("https://n8n.niprobin.com/webhook/search-azuracast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ search_query: search.trim() }),
+      });
+      if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
+      const data = (await res.json()) as Array<{ rows?: SearchRow[] } | SearchRow>;
+      const rows = Array.isArray(data)
+        ? data.flatMap((item) => {
+            if (item && typeof item === "object" && "rows" in item && Array.isArray((item as { rows?: SearchRow[] }).rows)) {
+              return ((item as { rows?: SearchRow[] }).rows ?? []).filter(Boolean);
+            }
+            return [item as SearchRow];
+          })
+        : [];
+      setSearchResults(rows.filter((row): row is SearchRow => Boolean(row)));
+    } catch {
+      setSearchError("Search failed. Try again.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
   return (
     <div className="space-y-10">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
@@ -53,6 +98,48 @@ export function OverviewDashboard() {
           <h2 className="text-lg font-semibold">Add to songs</h2>
           <AddToSongsForm />
         </div>
+      </div>
+      <div className="rounded-lg border border-border bg-card p-5 shadow-sm space-y-3">
+        <h2 className="text-lg font-semibold">Search Azuracast</h2>
+        <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={onSearch}>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-foreground" htmlFor="azuracast-search">
+              Search query
+            </label>
+            <input
+              id="azuracast-search"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="mt-1 w-full rounded-md border border-border bg-background p-2 text-sm outline-none focus:border-primary"
+              placeholder="Artist, track, or station"
+            />
+          </div>
+          <Button type="submit" disabled={!search.trim() || searching}>
+            {searching ? "Searching..." : "Search"}
+          </Button>
+        </form>
+        {searchError && <p className="text-sm text-rose-500">{searchError}</p>}
+        {!searchError && searchResults.length > 0 && (
+          <div className="space-y-3 rounded-md border border-border/80 bg-background/40 p-3 text-sm">
+            {searchResults.map((row, idx) => (
+              <div key={`${row.text ?? "row"}-${idx}`} className="border-b border-border/60 pb-3 last:border-none last:pb-0">
+                <p className="font-medium text-foreground">{row.text ?? "Unknown track"}</p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {(row.media?.playlists ?? []).length === 0 ? (
+                    <span className="text-xs text-muted-foreground">No playlists</span>
+                  ) : (
+                    row.media?.playlists?.map((playlist) => (
+                      <Badge key={playlist.id ?? playlist.name} variant="secondary" className="text-xs">
+                        {playlist.name}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
