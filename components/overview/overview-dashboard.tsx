@@ -37,15 +37,22 @@ export function OverviewDashboard() {
         body: JSON.stringify({ search_query: search.trim() }),
       });
       if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
-      const data = (await res.json()) as Array<{ rows?: SearchRow[] } | SearchRow>;
-      const rows = Array.isArray(data)
-        ? data.flatMap((item) => {
-            if (item && typeof item === "object" && "rows" in item && Array.isArray((item as { rows?: SearchRow[] }).rows)) {
-              return ((item as { rows?: SearchRow[] }).rows ?? []).filter(Boolean);
-            }
-            return [item as SearchRow];
-          })
-        : [];
+      const json = await res.json();
+      let rows: SearchRow[] = [];
+      if (Array.isArray(json)) {
+        rows = json.flatMap((item) => {
+          if (item && typeof item === "object" && "rows" in item && Array.isArray((item as { rows?: SearchRow[] }).rows)) {
+            return ((item as { rows?: SearchRow[] }).rows ?? []).filter(Boolean);
+          }
+          return [item as SearchRow];
+        });
+      } else if (json && typeof json === "object") {
+        if ("rows" in json && Array.isArray((json as { rows?: SearchRow[] }).rows)) {
+          rows = ((json as { rows?: SearchRow[] }).rows ?? []).filter(Boolean);
+        } else {
+          rows = [json as SearchRow];
+        }
+      }
       setSearchResults(rows.filter((row): row is SearchRow => Boolean(row)));
     } catch {
       setSearchError("Search failed. Try again.");
@@ -100,7 +107,7 @@ export function OverviewDashboard() {
         </div>
       </div>
       <div className="rounded-lg border border-border bg-card p-5 shadow-sm space-y-3">
-        <h2 className="text-lg font-semibold">Search Azuracast</h2>
+        <h2 className="text-lg font-semibold">Search</h2>
         <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={onSearch}>
           <div className="flex-1">
             <label className="block text-sm font-medium text-foreground" htmlFor="azuracast-search">
