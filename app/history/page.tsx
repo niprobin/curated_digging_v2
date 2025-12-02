@@ -92,7 +92,10 @@ async function getHistoryEntries(): Promise<HistoryEntry[]> {
     };
   });
   parsed.sort((a, b) => b.sortKey - a.sortKey);
-  return parsed.map(({ sortKey, ...entry }) => entry);
+  return parsed.map(({ sortKey, ...entry }) => {
+    void sortKey;
+    return entry;
+  });
 }
 
 export default async function HistoryPage() {

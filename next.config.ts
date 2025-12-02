@@ -1,5 +1,6 @@
 ﻿import type { NextConfig } from "next";
 import withPWA from "next-pwa";
+import runtimeCaching from "./lib/pwa-runtime-caching";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -22,6 +23,7 @@ export default withPWA({
   disable: isDev,
   register: true,
   skipWaiting: true,
+  runtimeCaching,
   fallbacks: {
     document: "/offline",
   },

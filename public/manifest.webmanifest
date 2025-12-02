@@ -1,21 +1,63 @@
-﻿{
+{
+  "id": "/",
   "name": "Curated Digging",
   "short_name": "Curated Digging",
-  "start_url": "/",
+  "description": "Check new music from curators and artists with persistent filters and history.",
+  "lang": "en",
+  "dir": "ltr",
+  "scope": "/",
+  "start_url": "/?source=pwa",
   "display": "standalone",
+  "display_override": ["standalone", "fullscreen"],
+  "orientation": "portrait",
   "background_color": "#111827",
   "theme_color": "#111827",
-  "description": "Check new music from curators and artists with persistent filters and history.",
+  "categories": ["music", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Playlists",
+      "short_name": "Playlists",
+      "description": "Jump right into the curator playlists view.",
+      "url": "/playlists"
+    },
+    {
+      "name": "Albums",
+      "short_name": "Albums",
+      "description": "See the freshest album drops.",
+      "url": "/albums"
+    },
+    {
+      "name": "History",
+      "short_name": "History",
+      "description": "Review what you already downloaded.",
+      "url": "/history"
     }
   ]
 }
