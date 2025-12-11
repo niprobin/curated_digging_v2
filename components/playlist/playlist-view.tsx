@@ -137,118 +137,51 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     return cleaned;
   };
 
-  const ALT_HOSTS = [
-    "kraken.squid.wtf",
-    "aether.squid.wtf",
-    "triton.squid.wtf",
-    "zeus.squid.wtf",
-    "wolf.qqdl.site",
-    "katze.qqdl.site",
-    "maus.qqdl.site",
-    "hund.qqdl.site",
-  ] as const;
+  const STREAMING_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-track-url";
 
-  const STREAMING_ENABLED = false;
-
-  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  const unwrapHostResponse = (payload: unknown) => {
-    if (payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)) {
-      const maybe = (payload as { data?: unknown }).data;
-      if (typeof maybe !== "undefined") {
-        return maybe;
-      }
-    }
-    return payload;
-  };
-
-  async function fetchJsonWithFallback(build: (host: string) => string): Promise<unknown> {
-    let lastErr: unknown = null;
-    for (const host of ALT_HOSTS) {
-      const url = build(host);
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          lastErr = new Error(`HTTP ${res.status}`);
-          continue;
-        }
-        const json = (await res.json()) as unknown;
-        return unwrapHostResponse(json);
-      } catch (e) {
-        lastErr = e;
-        continue;
-      }
-    }
-    throw lastErr ?? new Error("All hosts failed");
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlay = async (entry: PlaylistEntry) => {
-    if (!STREAMING_ENABLED) {
-      setFeedback({
-        type: "error",
-        message: "Streaming previews are temporarily unavailable due to API changes.",
-      });
-      return;
-    }
+    const spotifyId = extractSpotifyId(entry);
     try {
       setAudioLoading(true);
       setAudioInfo(null);
       setYamsUrl(null);
-      const q = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-      const searchJson = await fetchJsonWithFallback((host) => `https://${host}/search/?s=${encodeURIComponent(q)}`);
-      const id: string | undefined = (() => {
-        if (searchJson && typeof searchJson === "object") {
-          const obj = searchJson as Record<string, unknown>;
-          const items = obj["items"];
-          if (Array.isArray(items) && items.length > 0) {
-            const first = items[0];
-            if (first && typeof first === "object") {
-              const val = (first as Record<string, unknown>)["id"];
-              if (typeof val === "string" || typeof val === "number") return String(val);
-            }
-          }
-        }
-        return undefined;
-      })();
-      if (!id) throw new Error("No id found");
-      await delay(2000);
-      const trackJson = (await fetchJsonWithFallback(
-        (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
-      )) as unknown;
-      const arr = Array.isArray(trackJson) ? (trackJson as unknown[]) : [trackJson];
-      const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
-      const meta = objs.find((o) => typeof o["title"] === "string");
-      const urlObj = objs.find(
-        (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
-      );
-      const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as string | undefined;
-      const title: string = (meta?.["title"] as string | undefined) ?? entry.track;
-      let artist: string = entry.artist;
-      const artistName = meta?.["artistName"];
-      if (typeof artistName === "string") {
-        artist = artistName;
-      } else {
-        const artistObj = meta?.["artist"];
-        if (artistObj && typeof artistObj === "object") {
-          const nameVal = (artistObj as Record<string, unknown>)["name"];
-          if (typeof nameVal === "string") artist = nameVal;
-        }
+      const response = await fetch(STREAMING_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artist: entry.artist,
+          track: entry.track,
+          spotify_id: spotifyId,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
       }
-      if (!url) throw new Error("No streaming URL");
-      setAudioInfo({ url, title, artist });
-      // autoplay once ready
+      const data = (await response.json()) as { stream_url?: string } | null;
+      const streamUrl = typeof data?.stream_url === "string" ? data.stream_url : null;
+      if (!streamUrl) throw new Error("Missing stream url");
+      setAudioInfo({ url: streamUrl, title: entry.track, artist: entry.artist });
       setTimeout(() => {
         try {
           if (audioRef.current) {
             audioRef.current.volume = volume;
-            audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+            audioRef.current
+              .play()
+              .then(() => setIsPlaying(true))
+              .catch(() => setIsPlaying(false));
           }
-        } catch {}
-      }, 100);
+        } catch (err) {
+          console.error("Autoplay failed", err);
+          setIsPlaying(false);
+        }
+      }, 75);
     } catch (e) {
       console.error("Failed to fetch streaming URL", e);
       setAudioInfo(null);
+      setFeedback({
+        type: "error",
+        message: "Cannot play this preview right now. Please try again.",
+      });
     } finally {
       setAudioLoading(false);
     }
@@ -463,10 +396,21 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-muted-foreground">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Search on YAMS.TF"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-primary hover:text-primary"
+                        title="Play preview"
+                        onClick={() => handlePlay(entry)}
+                        disabled={audioLoading}
+                      >
+                        <i className="fa-solid fa-play" aria-hidden />
+                        <span className="sr-only">Play preview</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Search on YAMS.TF"
                       onClick={() => {
                         setAudioInfo(null);
                         setAudioLoading(false);
@@ -630,13 +574,75 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       {/* Right pane: persistent external viewer (lean, full viewport height, no padding) */}
       <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
         <div className="flex-1 overflow-hidden">
-          {STREAMING_ENABLED ? (
-            audioLoading ? (
+          {audioLoading ? (
+            <div className="grid h-full place-items-center text-muted-foreground">
+              <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
+            </div>
+          ) : audioInfo ? (
+            <div className="grid h-full place-items-center p-4">
+              <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
+                <div className="mb-4 text-center">
+                  <div className="text-base font-semibold truncate">{audioInfo.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
+                </div>
+                <div className="flex flex-col items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
+                    title={isPlaying ? "Pause" : "Play"}
+                  >
+                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
+                    <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
+                  </button>
+                  <div className="flex w-full items-center gap-3">
+                    <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={duration || 0}
+                      step={0.1}
+                      value={Number.isFinite(currentTime) ? currentTime : 0}
+                      onChange={(e) => onSeek(parseFloat(e.target.value))}
+                      className="flex-1 accent-primary"
+                      aria-label="Seek"
+                    />
+                    <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
+                  </div>
+                  <div className="flex w-full items-center gap-2">
+                    <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={volume}
+                      onChange={(e) => onVol(parseFloat(e.target.value))}
+                      className="w-full accent-primary"
+                      aria-label="Volume"
+                    />
+                  </div>
+                </div>
+                <audio ref={audioRef} src={audioInfo.url} className="hidden" />
+              </div>
+            </div>
+          ) : yamsUrl ? (
+            <iframe title="External" src={yamsUrl} className="h-full w-full" />
+          ) : (
+            <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
+          )}
+        </div>
+      </div>
+      {/* Mobile external viewer below content */}
+      {(audioLoading || audioInfo || yamsUrl) && (
+        <div className="relative md:hidden mt-4">
+          <div className="h-[60vh] w-full">
+            {audioLoading ? (
               <div className="grid h-full place-items-center text-muted-foreground">
                 <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
               </div>
             ) : audioInfo ? (
-              <div className="grid h-full place-items-center p-4">
+              <div className="grid h-full place-items-center p-3">
                 <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
                   <div className="mb-4 text-center">
                     <div className="text-base font-semibold truncate">{audioInfo.title}</div>
@@ -685,83 +691,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
               </div>
             ) : yamsUrl ? (
               <iframe title="External" src={yamsUrl} className="h-full w-full" />
-            ) : (
-              <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
-            )
-          ) : yamsUrl ? (
-            <iframe title="External" src={yamsUrl} className="h-full w-full" />
-          ) : (
-            <div className="grid h-full place-items-center text-muted-foreground">
-              <div className="text-center text-sm">
-                Streaming previews are temporarily unavailable due to API changes.
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-      {/* Mobile external viewer below content */}
-      {((STREAMING_ENABLED && (audioLoading || audioInfo || yamsUrl)) || (!STREAMING_ENABLED && yamsUrl)) && (
-        <div className="relative md:hidden mt-4">
-          <div className="h-[60vh] w-full">
-            {STREAMING_ENABLED ? (
-              audioLoading ? (
-                <div className="grid h-full place-items-center text-muted-foreground">
-                  <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
-                </div>
-              ) : audioInfo ? (
-                <div className="grid h-full place-items-center p-3">
-                  <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
-                    <div className="mb-4 text-center">
-                      <div className="text-base font-semibold truncate">{audioInfo.title}</div>
-                      <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
-                    </div>
-                    <div className="flex flex-col items-center gap-4">
-                      <button
-                        type="button"
-                        onClick={togglePlay}
-                        className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
-                        title={isPlaying ? "Pause" : "Play"}
-                      >
-                        <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
-                        <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
-                      </button>
-                      <div className="flex w-full items-center gap-3">
-                        <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={duration || 0}
-                          step={0.1}
-                          value={Number.isFinite(currentTime) ? currentTime : 0}
-                          onChange={(e) => onSeek(parseFloat(e.target.value))}
-                          className="flex-1 accent-primary"
-                          aria-label="Seek"
-                        />
-                        <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
-                      </div>
-                      <div className="flex w-full items-center gap-2">
-                        <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={volume}
-                          onChange={(e) => onVol(parseFloat(e.target.value))}
-                          className="w-full accent-primary"
-                          aria-label="Volume"
-                        />
-                      </div>
-                    </div>
-                    <audio ref={audioRef} src={audioInfo.url} className="hidden" />
-                  </div>
-                </div>
-              ) : yamsUrl ? (
-                <iframe title="External" src={yamsUrl} className="h-full w-full" />
-              ) : null
-            ) : (
-              <iframe title="External" src={yamsUrl ?? ""} className="h-full w-full" />
-            )}
+            ) : null}
           </div>
         </div>
       )}
