@@ -26,19 +26,9 @@ type TrackForPlaylist = {
   explicit?: boolean;
 };
 
-const ALT_HOSTS = [
-  "kraken.squid.wtf",
-  "aether.squid.wtf",
-  "triton.squid.wtf",
-  "zeus.squid.wtf",
-  "wolf.qqdl.site",
-  "katze.qqdl.site",
-  "maus.qqdl.site",
-  "hund.qqdl.site",
-] as const;
-
-const STREAMING_ENABLED = false;
+const STREAMING_ENABLED = true;
 const ALBUM_TRACKS_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-albums-tracks";
+const STREAMING_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-track-url";
 
 export function AlbumView({ entries }: AlbumViewProps) {
   const {
@@ -336,45 +326,9 @@ export function AlbumView({ entries }: AlbumViewProps) {
     return base.replace(/[-()]/g, " ").replace(/\s+/g, " ").trim();
   };
 
-  const sanitizeTrackQuery = (value: string) => {
-    const noDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const cleaned = noDiacritics.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
-    return cleaned;
-  };
-
-  const unwrapHostResponse = (payload: unknown) => {
-    if (payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)) {
-      const maybe = (payload as { data?: unknown }).data;
-      if (typeof maybe !== "undefined") {
-        return maybe;
-      }
-    }
-    return payload;
-  };
-
   function asRecord(u: unknown): Record<string, unknown> | null {
     return typeof u === "object" && u !== null ? (u as Record<string, unknown>) : null;
   }
-
-  const fetchJsonWithFallback = React.useCallback(async (build: (host: string) => string) => {
-    let lastErr: unknown = null;
-    for (const host of ALT_HOSTS) {
-      const url = build(host);
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          lastErr = new Error(`HTTP ${res.status}`);
-          continue;
-        }
-        const json = (await res.json()) as unknown;
-        return unwrapHostResponse(json);
-      } catch (error) {
-        lastErr = error;
-        continue;
-      }
-    }
-    throw lastErr ?? new Error("All hosts failed");
-  }, []);
 
   const togglePlay = () => {
     const el = audioRef.current;
@@ -432,28 +386,18 @@ export function AlbumView({ entries }: AlbumViewProps) {
   };
 
   const playDirect = React.useCallback(async (url: string, title: string, artist: string) => {
-    try {
-      setAudioLoading(true);
-      setAudioInfo({ url, title, artist });
-      setTimeout(() => {
-        try {
-          if (audioRef.current) {
-            audioRef.current.play().catch(() => setIsPlaying(false));
-          }
-        } catch {}
-      }, 50);
-    } finally {
-      setAudioLoading(false);
-    }
+    setAudioInfo({ url, title, artist });
+    setTimeout(() => {
+      try {
+        if (audioRef.current) {
+          audioRef.current.play().catch(() => setIsPlaying(false));
+        }
+      } catch {}
+    }, 50);
   }, []);
 
   const playTrack = React.useCallback(
     async (track: TrackForPlaylist, index?: number) => {
-      if (!STREAMING_ENABLED) {
-        setAudioInfo(null);
-        setAudioLoading(false);
-        return;
-      }
       const { artist, title, url: urlHint, id } = track;
       const resolveIndex = () => {
         if (typeof index === "number") return index;
@@ -477,103 +421,43 @@ export function AlbumView({ entries }: AlbumViewProps) {
         finalizeIndex();
       };
 
-      if (id) {
-        try {
-          setAudioLoading(true);
-          setAudioInfo(null);
-          const trackJson = await fetchJsonWithFallback(
-            (host) => `https://${host}/track/?id=${encodeURIComponent(id)}&quality=LOW`,
-          );
-          const arr = Array.isArray(trackJson) ? trackJson : [trackJson];
-          const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
-          const meta = objs.find((o) => typeof o["title"] === "string");
-          const urlObj = objs.find(
-            (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
-          );
-          const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as
-            | string
-            | undefined;
-          const resolvedTitle: string = (meta?.["title"] as string | undefined) ?? title;
-          let resolvedArtist: string = artist;
-          const artistName = meta?.["artistName"];
-          if (typeof artistName === "string") {
-            resolvedArtist = artistName;
-          } else {
-            const artistObj = meta?.["artist"];
-            if (artistObj && typeof artistObj === "object") {
-              const nameVal = (artistObj as Record<string, unknown>)["name"];
-              if (typeof nameVal === "string") resolvedArtist = nameVal;
-            }
-          }
-          if (!url) throw new Error("No streaming URL");
-          await playFromUrl(url, resolvedTitle, resolvedArtist);
-          return;
-        } catch (error) {
-          console.error("Failed to fetch streaming URL via id", error);
-        } finally {
-          setAudioLoading(false);
+      const tryWebhook = async () => {
+        const params = new URLSearchParams({
+          artist,
+          track: title,
+        });
+        if (id) params.set("track_id", id);
+        const response = await fetch(`${STREAMING_WEBHOOK_URL}?${params.toString()}`, {
+          method: "GET",
+        });
+        if (!response.ok) {
+          throw new Error(`Webhook returned ${response.status}`);
         }
-      }
-
-      if (urlHint) {
-        await playFromUrl(urlHint, title, artist);
-        return;
-      }
+        const data = (await response.json()) as { stream_url?: string; title?: string; artist?: string } | null;
+        const streamUrl = typeof data?.stream_url === "string" ? data.stream_url : null;
+        if (!streamUrl) throw new Error("Missing stream url");
+        const resolvedTitle = typeof data?.title === "string" && data.title.trim() ? data.title.trim() : title;
+        const resolvedArtist = typeof data?.artist === "string" && data.artist.trim() ? data.artist.trim() : artist;
+        await playFromUrl(streamUrl, resolvedTitle, resolvedArtist);
+      };
 
       try {
         setAudioLoading(true);
         setAudioInfo(null);
-        const q = sanitizeTrackQuery(`${artist} ${title}`);
-        const searchJson = await fetchJsonWithFallback(
-          (host) => `https://${host}/search/?s=${encodeURIComponent(q)}`,
-        );
-        const fetchedId: string | undefined = (() => {
-          if (searchJson && typeof searchJson === "object") {
-            const obj = searchJson as Record<string, unknown>;
-            const items = obj["items"];
-            if (Array.isArray(items) && items.length > 0) {
-              const first = items[0];
-              if (first && typeof first === "object") {
-                const val = (first as Record<string, unknown>)["id"];
-                if (typeof val === "string" || typeof val === "number") return String(val);
-              }
-            }
-          }
-          return undefined;
-        })();
-        if (!fetchedId) throw new Error("No id found");
-        const trackJson = await fetchJsonWithFallback(
-          (host) => `https://${host}/track/?id=${encodeURIComponent(fetchedId)}&quality=LOW`,
-        );
-        const arr = Array.isArray(trackJson) ? trackJson : [trackJson];
-        const objs = arr.map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : {}));
-        const meta = objs.find((o) => typeof o["title"] === "string");
-        const urlObj = objs.find(
-          (o) => typeof o["OriginalTrackUrl"] === "string" || typeof o["originalURLTrack"] === "string" || typeof o["originalTrackURL"] === "string",
-        );
-        const url = (urlObj?.["OriginalTrackUrl"] ?? urlObj?.["originalURLTrack"] ?? urlObj?.["originalTrackURL"]) as string | undefined;
-        const resolvedTitle: string = (meta?.["title"] as string | undefined) ?? title;
-        let resolvedArtist: string = artist;
-        const artistName = meta?.["artistName"];
-        if (typeof artistName === "string") {
-          resolvedArtist = artistName;
-        } else {
-          const artistObj = meta?.["artist"];
-          if (artistObj && typeof artistObj === "object") {
-            const nameVal = (artistObj as Record<string, unknown>)["name"];
-            if (typeof nameVal === "string") resolvedArtist = nameVal;
-          }
-        }
-        if (!url) throw new Error("No streaming URL");
-        await playFromUrl(url, resolvedTitle, resolvedArtist);
+        await tryWebhook();
+        return;
       } catch (error) {
         console.error("Failed to fetch streaming URL", error);
+        if (urlHint) {
+          await playFromUrl(urlHint, title, artist);
+          return;
+        }
         setAudioInfo(null);
       } finally {
         setAudioLoading(false);
       }
     },
-    [binimumDetails, playDirect, fetchJsonWithFallback],
+    [binimumDetails, playDirect],
   );
 
   const playNextTrack = React.useCallback(() => {
