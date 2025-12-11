@@ -148,7 +148,19 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     "hund.qqdl.site",
   ] as const;
 
+  const STREAMING_ENABLED = false;
+
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const unwrapHostResponse = (payload: unknown) => {
+    if (payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)) {
+      const maybe = (payload as { data?: unknown }).data;
+      if (typeof maybe !== "undefined") {
+        return maybe;
+      }
+    }
+    return payload;
+  };
 
   async function fetchJsonWithFallback(build: (host: string) => string): Promise<unknown> {
     let lastErr: unknown = null;
@@ -160,7 +172,8 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
           lastErr = new Error(`HTTP ${res.status}`);
           continue;
         }
-        return (await res.json()) as unknown;
+        const json = (await res.json()) as unknown;
+        return unwrapHostResponse(json);
       } catch (e) {
         lastErr = e;
         continue;
@@ -169,7 +182,15 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
     throw lastErr ?? new Error("All hosts failed");
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePlay = async (entry: PlaylistEntry) => {
+    if (!STREAMING_ENABLED) {
+      setFeedback({
+        type: "error",
+        message: "Streaming previews are temporarily unavailable due to API changes.",
+      });
+      return;
+    }
     try {
       setAudioLoading(true);
       setAudioInfo(null);
@@ -442,16 +463,6 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-muted-foreground">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-primary hover:text-primary"
-                        title="Play preview"
-                        onClick={() => handlePlay(entry)}
-                      >
-                        <i className="fa-solid fa-play" aria-hidden />
-                        <span className="sr-only">Play</span>
-                      </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -463,7 +474,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         setYamsUrl(`https://yams.tf/#/search/${encodeURIComponent(yamsQuery)}`);
                       }}
                     >
-                      <i className="fa-solid fa-1" aria-hidden />
+                      <span className="text-sm font-semibold">Y</span>
                       <span className="sr-only">Search YAMS.TF</span>
                     </Button>
                     <Button
@@ -477,7 +488,7 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                         setYamsUrl(`https://monochrome.tf/#search/${encodeURIComponent(query)}`);
                       }}
                     >
-                      <i className="fa-solid fa-2" aria-hidden />
+                      <span className="text-sm font-semibold">M</span>
                       <span className="sr-only">Search on Monochrome</span>
                     </Button>
                       <Button
@@ -619,75 +630,13 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       {/* Right pane: persistent external viewer (lean, full viewport height, no padding) */}
       <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
         <div className="flex-1 overflow-hidden">
-          {audioLoading ? (
-            <div className="grid h-full place-items-center text-muted-foreground">
-              <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
-            </div>
-          ) : audioInfo ? (
-            <div className="grid h-full place-items-center p-4">
-              <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
-                <div className="mb-4 text-center">
-                  <div className="text-base font-semibold truncate">{audioInfo.title}</div>
-                  <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
-                </div>
-                <div className="flex flex-col items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={togglePlay}
-                    className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
-                    title={isPlaying ? "Pause" : "Play"}
-                  >
-                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
-                    <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
-                  </button>
-                  <div className="flex w-full items-center gap-3">
-                    <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={duration || 0}
-                      step={0.1}
-                      value={Number.isFinite(currentTime) ? currentTime : 0}
-                      onChange={(e) => onSeek(parseFloat(e.target.value))}
-                      className="flex-1 accent-primary"
-                      aria-label="Seek"
-                    />
-                    <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
-                  </div>
-                  <div className="flex w-full items-center gap-2">
-                    <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={volume}
-                      onChange={(e) => onVol(parseFloat(e.target.value))}
-                      className="w-full accent-primary"
-                      aria-label="Volume"
-                    />
-                  </div>
-                </div>
-                <audio ref={audioRef} src={audioInfo.url} className="hidden" />
-              </div>
-            </div>
-          ) : yamsUrl ? (
-            <iframe title="External" src={yamsUrl} className="h-full w-full" />
-          ) : (
-            <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
-          )}
-        </div>
-      </div>
-      {/* Mobile external viewer below content */}
-      {(audioLoading || audioInfo || yamsUrl) && (
-        <div className="relative md:hidden mt-4">
-          <div className="h-[60vh] w-full">
-            {audioLoading ? (
+          {STREAMING_ENABLED ? (
+            audioLoading ? (
               <div className="grid h-full place-items-center text-muted-foreground">
                 <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
               </div>
             ) : audioInfo ? (
-              <div className="grid h-full place-items-center p-3">
+              <div className="grid h-full place-items-center p-4">
                 <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
                   <div className="mb-4 text-center">
                     <div className="text-base font-semibold truncate">{audioInfo.title}</div>
@@ -736,7 +685,83 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
               </div>
             ) : yamsUrl ? (
               <iframe title="External" src={yamsUrl} className="h-full w-full" />
-            ) : null}
+            ) : (
+              <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
+            )
+          ) : yamsUrl ? (
+            <iframe title="External" src={yamsUrl} className="h-full w-full" />
+          ) : (
+            <div className="grid h-full place-items-center text-muted-foreground">
+              <div className="text-center text-sm">
+                Streaming previews are temporarily unavailable due to API changes.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Mobile external viewer below content */}
+      {((STREAMING_ENABLED && (audioLoading || audioInfo || yamsUrl)) || (!STREAMING_ENABLED && yamsUrl)) && (
+        <div className="relative md:hidden mt-4">
+          <div className="h-[60vh] w-full">
+            {STREAMING_ENABLED ? (
+              audioLoading ? (
+                <div className="grid h-full place-items-center text-muted-foreground">
+                  <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden />
+                </div>
+              ) : audioInfo ? (
+                <div className="grid h-full place-items-center p-3">
+                  <div className="w-full max-w-md rounded-xl border border-border/60 bg-card/70 p-4 shadow-lg backdrop-blur">
+                    <div className="mb-4 text-center">
+                      <div className="text-base font-semibold truncate">{audioInfo.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">{audioInfo.artist}</div>
+                    </div>
+                    <div className="flex flex-col items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={togglePlay}
+                        className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform hover:scale-[1.03] active:scale-95"
+                        title={isPlaying ? "Pause" : "Play"}
+                      >
+                        <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
+                        <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
+                      </button>
+                      <div className="flex w-full items-center gap-3">
+                        <div className="w-12 text-right text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={duration || 0}
+                          step={0.1}
+                          value={Number.isFinite(currentTime) ? currentTime : 0}
+                          onChange={(e) => onSeek(parseFloat(e.target.value))}
+                          className="flex-1 accent-primary"
+                          aria-label="Seek"
+                        />
+                        <div className="w-12 text-[11px] tabular-nums text-muted-foreground">{fmtTime(Math.max(0, (duration || 0) - (currentTime || 0)))}</div>
+                      </div>
+                      <div className="flex w-full items-center gap-2">
+                        <i className="fa-solid fa-volume-high text-muted-foreground" aria-hidden />
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={volume}
+                          onChange={(e) => onVol(parseFloat(e.target.value))}
+                          className="w-full accent-primary"
+                          aria-label="Volume"
+                        />
+                      </div>
+                    </div>
+                    <audio ref={audioRef} src={audioInfo.url} className="hidden" />
+                  </div>
+                </div>
+              ) : yamsUrl ? (
+                <iframe title="External" src={yamsUrl} className="h-full w-full" />
+              ) : null
+            ) : (
+              <iframe title="External" src={yamsUrl ?? ""} className="h-full w-full" />
+            )}
           </div>
         </div>
       )}

@@ -48,6 +48,8 @@ const ALT_HOSTS = [
   "hund.qqdl.site",
 ] as const;
 
+const STREAMING_ENABLED = false;
+
 export function AlbumView({ entries }: AlbumViewProps) {
   const {
     state: { timeWindow, showLikedOnly },
@@ -118,6 +120,10 @@ export function AlbumView({ entries }: AlbumViewProps) {
   // Local remove/dismiss state for albums
   const DISMISSED_STORAGE_KEY = "curated-digging:album-dismissed";
   const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
+  const BOOKMARKS_STORAGE_KEY = "curated-digging:album-bookmarks";
+  const BOOKMARK_FILTER_STORAGE_KEY = "curated-digging:album-bookmark-filter";
+  const [bookmarkedIds, setBookmarkedIds] = React.useState<Set<string>>(() => new Set());
+  const [showBookmarkedOnly, setShowBookmarkedOnly] = React.useState(false);
 
   React.useEffect(() => {
     try {
@@ -154,6 +160,48 @@ export function AlbumView({ entries }: AlbumViewProps) {
   }, [dismissedIds]);
 
   React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((id): id is string => typeof id === "string");
+          setBookmarkedIds(new Set(cleaned));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(Array.from(bookmarkedIds)));
+    } catch {
+      // ignore
+    }
+  }, [bookmarkedIds]);
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BOOKMARK_FILTER_STORAGE_KEY);
+      if (raw) {
+        setShowBookmarkedOnly(raw === "true");
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(BOOKMARK_FILTER_STORAGE_KEY, showBookmarkedOnly ? "true" : "false");
+    } catch {
+      // ignore
+    }
+  }, [showBookmarkedOnly]);
+
+  React.useEffect(() => {
     if (!openRatingForId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpenRatingForId(null);
@@ -182,7 +230,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   const filtered = React.useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
-    return entries.filter((entry) => {
+    const matches = entries.filter((entry) => {
       if (dismissedIds.has(entry.id)) {
         return false;
       }
@@ -201,16 +249,34 @@ export function AlbumView({ entries }: AlbumViewProps) {
       if (showLikedOnly && !liked) {
         return false;
       }
+      if (showBookmarkedOnly && !bookmarkedIds.has(entry.id)) {
+        return false;
+      }
       if (normalizedSearch && !entry.name.toLowerCase().includes(normalizedSearch)) {
         return false;
       }
       return true;
     });
-  }, [entries, timeWindow, showLikedOnly, isLiked, dismissedIds, searchQuery]);
+
+    if (showBookmarkedOnly || bookmarkedIds.size === 0) {
+      return matches;
+    }
+
+    const prioritized: AlbumEntry[] = [];
+    const others: AlbumEntry[] = [];
+    matches.forEach((entry) => {
+      if (bookmarkedIds.has(entry.id)) {
+        prioritized.push(entry);
+      } else {
+        others.push(entry);
+      }
+    });
+    return [...prioritized, ...others];
+  }, [entries, timeWindow, showLikedOnly, showBookmarkedOnly, bookmarkedIds, isLiked, dismissedIds, searchQuery]);
 
   React.useEffect(() => {
     setPage(1);
-  }, [timeWindow, showLikedOnly, entries.length, searchQuery, pageSize]);
+  }, [timeWindow, showLikedOnly, showBookmarkedOnly, entries.length, searchQuery, pageSize]);
 
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const recomputePageSize = React.useCallback((height: number) => {
@@ -286,6 +352,16 @@ export function AlbumView({ entries }: AlbumViewProps) {
     return cleaned;
   };
 
+  const unwrapHostResponse = (payload: unknown) => {
+    if (payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)) {
+      const maybe = (payload as { data?: unknown }).data;
+      if (typeof maybe !== "undefined") {
+        return maybe;
+      }
+    }
+    return payload;
+  };
+
   const fetchAlbumJsonWithFallback = React.useCallback(async (build: (host: string) => string) => {
     let lastErr: unknown = null;
     for (const host of KRAKEN_HOSTS) {
@@ -296,7 +372,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
           lastErr = new Error(`HTTP ${res.status}`);
           continue;
         }
-        return (await res.json()) as unknown;
+        const json = (await res.json()) as unknown;
+        return unwrapHostResponse(json);
       } catch (error) {
         lastErr = error;
         continue;
@@ -324,7 +401,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
           lastErr = new Error(`HTTP ${res.status}`);
           continue;
         }
-        return (await res.json()) as unknown;
+        const json = (await res.json()) as unknown;
+        return unwrapHostResponse(json);
       } catch (error) {
         lastErr = error;
         continue;
@@ -335,7 +413,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   const togglePlay = () => {
     const el = audioRef.current;
-    if (!el) return;
+    if (!el || !STREAMING_ENABLED) return;
     if (el.paused) {
       el.play().catch(() => setIsPlaying(false));
     } else {
@@ -406,6 +484,11 @@ export function AlbumView({ entries }: AlbumViewProps) {
 
   const playTrack = React.useCallback(
     async (track: TrackForPlaylist, index?: number) => {
+      if (!STREAMING_ENABLED) {
+        setAudioInfo(null);
+        setAudioLoading(false);
+        return;
+      }
       const { artist, title, url: urlHint, id } = track;
       const resolveIndex = () => {
         if (typeof index === "number") return index;
@@ -589,6 +672,18 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
+  const toggleBookmark = (entry: AlbumEntry) => {
+    setBookmarkedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(entry.id)) {
+        next.delete(entry.id);
+      } else {
+        next.add(entry.id);
+      }
+      return next;
+    });
+  };
+
   const handleOpenExternal = async (entry: AlbumEntry) => {
     setExternalLoading((prev) => {
       const next = new Set(prev);
@@ -609,6 +704,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleOpenBinimum = async (entry: AlbumEntry) => {
     setExternalLoading((prev) => {
       const next = new Set(prev);
@@ -745,6 +841,12 @@ export function AlbumView({ entries }: AlbumViewProps) {
         next.add(entry.id);
         return next;
       });
+      setBookmarkedIds((prev) => {
+        if (!prev.has(entry.id)) return prev;
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
     } catch (err) {
       console.error("Failed to send album dismiss webhook", err);
     }
@@ -779,6 +881,21 @@ export function AlbumView({ entries }: AlbumViewProps) {
               </button>
             )}
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-muted-foreground">
+            <Button
+              size="sm"
+              variant={showBookmarkedOnly ? "secondary" : "outline"}
+              className="gap-2"
+              aria-pressed={showBookmarkedOnly}
+              onClick={() => setShowBookmarkedOnly((prev) => !prev)}
+            >
+              <i className={showBookmarkedOnly ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"} aria-hidden />
+              {showBookmarkedOnly ? "Showing bookmarked" : "Show bookmarked only"}
+            </Button>
+            <span className="text-[11px] uppercase tracking-wide">
+              {bookmarkedIds.size} bookmarked
+            </span>
+          </div>
         </div>
         <div ref={listRef} className="flex flex-1 flex-col overflow-hidden">
           {filtered.length === 0 ? (
@@ -791,6 +908,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 const liked = isLiked(entry.id, entry.liked) || entry.liked;
                 const rating = ratings[entry.id] ?? 0;
                 const isExternalLoading = externalLoading.has(entry.id);
+                const isBookmarked = bookmarkedIds.has(entry.id);
                 const nameParts = entry.name
                   .split("-")
                   .map((part) => part.trim())
@@ -846,21 +964,18 @@ export function AlbumView({ entries }: AlbumViewProps) {
                                 Checked
                               </span>
                             )}
+                            {isBookmarked && (
+                              <Badge
+                                variant="secondary"
+                                className="border border-amber-200 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                              >
+                                Bookmarked
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
                       <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-primary hover:text-primary"
-                          title="Open Binimum"
-                          onClick={() => handleOpenBinimum(entry)}
-                          disabled={isExternalLoading}
-                        >
-                          <i className="fa-solid fa-play" aria-hidden />
-                          <span className="sr-only">Open Binimum</span>
-                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -870,6 +985,17 @@ export function AlbumView({ entries }: AlbumViewProps) {
                         >
                           <i className="fa-solid fa-magnifying-glass" aria-hidden />
                           <span className="sr-only">Search YAMS.TF</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={clsx(isBookmarked && "text-amber-600 hover:text-amber-600")}
+                          aria-pressed={isBookmarked}
+                          title={isBookmarked ? "Remove bookmark" : "Bookmark album"}
+                          onClick={() => toggleBookmark(entry)}
+                        >
+                          <i className={isBookmarked ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"} aria-hidden />
+                          <span className="sr-only">{isBookmarked ? "Remove bookmark" : "Bookmark album"}</span>
                         </Button>
                         <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
                           <Button
@@ -986,6 +1112,11 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 <h2 className="text-xl font-semibold">{binimumDetails.name}</h2>
                 <p className="text-sm text-muted-foreground">{binimumDetails.artist}</p>
               </div>
+              {!STREAMING_ENABLED && (
+                <p className="rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
+                  Streaming previews are temporarily unavailable due to API changes.
+                </p>
+              )}
             {binimumDetails.tracks.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border bg-card/30 p-4 text-sm text-muted-foreground">
                 No tracks available for this album.
@@ -1006,15 +1137,20 @@ export function AlbumView({ entries }: AlbumViewProps) {
                           "hover:bg-card/70",
                           isActive && "border border-primary/50 bg-primary/10",
                         )}
-                        onClick={() => playTrack(t, idx)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            playTrack(t, idx);
-                          }
-                        }}
+                        onClick={STREAMING_ENABLED ? () => playTrack(t, idx) : undefined}
+                        role={STREAMING_ENABLED ? "button" : undefined}
+                        tabIndex={STREAMING_ENABLED ? 0 : -1}
+                        aria-disabled={!STREAMING_ENABLED}
+                        onKeyDown={
+                          STREAMING_ENABLED
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  playTrack(t, idx);
+                                }
+                              }
+                            : undefined
+                        }
                       >
                         <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
                         <div className="min-w-0 flex-1">
@@ -1041,12 +1177,18 @@ export function AlbumView({ entries }: AlbumViewProps) {
                             variant="ghost"
                             size="icon"
                             className="text-primary hover:text-primary"
-                            title="Play preview"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              playTrack(t, idx);
-                            }}
-                            disabled={audioLoading}
+                            title={
+                              STREAMING_ENABLED ? "Play preview" : "Streaming temporarily unavailable"
+                            }
+                            onClick={
+                              STREAMING_ENABLED
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    playTrack(t, idx);
+                                  }
+                                : undefined
+                            }
+                            disabled={!STREAMING_ENABLED || audioLoading}
                           >
                             <i className="fa-solid fa-play" aria-hidden />
                             <span className="sr-only">Play</span>
@@ -1082,53 +1224,59 @@ export function AlbumView({ entries }: AlbumViewProps) {
         {/* Sticky bottom audio bar */}
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
           <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-2">
-            {audioInfo ? (
-              <>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  onClick={togglePlay}
-                  aria-label={isPlaying ? "Pause" : "Play"}
-                  title={isPlaying ? "Pause" : "Play"}
-                >
-                  <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  aria-label="Add"
-                  title="Add"
-                  onClick={() => {
-                    if (audioInfo) {
-                      setDrawerTrack({ title: audioInfo.title, artist: audioInfo.artist });
-                      setSelectedPlaylist(null);
-                      setSubmitError(null);
-                    }
-                  }}
-                >
-                  <i className="fa-solid fa-plus" aria-hidden />
-                </Button>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{audioInfo.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{audioInfo.artist}</p>
-                </div>
-                <div className="flex w-48 items-center gap-2 md:w-72">
-                  <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={duration || 0}
-                    step={1}
-                    value={Math.min(currentTime, duration || 0)}
-                    onChange={(e) => onSeek(Number(e.target.value))}
-                    className="h-1 w-full cursor-pointer appearance-none rounded bg-border accent-foreground"
-                  />
-                  <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(duration)}</span>
-                </div>
-                <audio ref={audioRef} src={audioInfo.url} className="hidden" />
-              </>
+            {STREAMING_ENABLED ? (
+              audioInfo ? (
+                <>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={togglePlay}
+                    aria-label={isPlaying ? "Pause" : "Play"}
+                    title={isPlaying ? "Pause" : "Play"}
+                  >
+                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label="Add"
+                    title="Add"
+                    onClick={() => {
+                      if (audioInfo) {
+                        setDrawerTrack({ title: audioInfo.title, artist: audioInfo.artist });
+                        setSelectedPlaylist(null);
+                        setSubmitError(null);
+                      }
+                    }}
+                  >
+                    <i className="fa-solid fa-plus" aria-hidden />
+                  </Button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{audioInfo.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{audioInfo.artist}</p>
+                  </div>
+                  <div className="flex w-48 items-center gap-2 md:w-72">
+                    <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={duration || 0}
+                      step={1}
+                      value={Math.min(currentTime, duration || 0)}
+                      onChange={(e) => onSeek(Number(e.target.value))}
+                      className="h-1 w-full cursor-pointer appearance-none rounded bg-border accent-foreground"
+                    />
+                    <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(duration)}</span>
+                  </div>
+                  <audio ref={audioRef} src={audioInfo.url} className="hidden" />
+                </>
+              ) : (
+                <div className="text-xs text-muted-foreground">Select a track to play</div>
+              )
             ) : (
-              <div className="text-xs text-muted-foreground">Select a track to play</div>
+              <div className="text-xs text-muted-foreground">
+                Streaming previews are temporarily unavailable due to API changes.
+              </div>
             )}
           </div>
         </div>
@@ -1214,7 +1362,12 @@ export function AlbumView({ entries }: AlbumViewProps) {
               <h2 className="text-lg font-semibold">{binimumDetails.name}</h2>
               <p className="text-sm text-muted-foreground">{binimumDetails.artist}</p>
             </div>
-            {audioInfo && (
+            {!STREAMING_ENABLED && (
+              <p className="rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
+                Streaming previews are temporarily unavailable due to API changes.
+              </p>
+            )}
+            {STREAMING_ENABLED && audioInfo && (
               <div className="sticky bottom-2 z-50 rounded-md border border-border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75">
                 <div className="flex items-center gap-3">
                   <Button
@@ -1254,15 +1407,20 @@ export function AlbumView({ entries }: AlbumViewProps) {
                           "hover:bg-card/70",
                           isActive && "border border-primary/50 bg-primary/10",
                         )}
-                        onClick={() => playTrack(t, idx)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            playTrack(t, idx);
-                          }
-                        }}
+                        onClick={STREAMING_ENABLED ? () => playTrack(t, idx) : undefined}
+                        role={STREAMING_ENABLED ? "button" : undefined}
+                        tabIndex={STREAMING_ENABLED ? 0 : -1}
+                        aria-disabled={!STREAMING_ENABLED}
+                        onKeyDown={
+                          STREAMING_ENABLED
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  playTrack(t, idx);
+                                }
+                              }
+                            : undefined
+                        }
                       >
                         <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
                         <div className="min-w-0 flex-1">
@@ -1289,12 +1447,18 @@ export function AlbumView({ entries }: AlbumViewProps) {
                             variant="ghost"
                             size="icon"
                             className="text-primary hover:text-primary"
-                            title="Play preview"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              playTrack(t, idx);
-                            }}
-                            disabled={audioLoading}
+                            title={
+                              STREAMING_ENABLED ? "Play preview" : "Streaming temporarily unavailable"
+                            }
+                            onClick={
+                              STREAMING_ENABLED
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    playTrack(t, idx);
+                                  }
+                                : undefined
+                            }
+                            disabled={!STREAMING_ENABLED || audioLoading}
                           >
                             <i className="fa-solid fa-play" aria-hidden />
                             <span className="sr-only">Play</span>
