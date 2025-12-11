@@ -19,7 +19,7 @@ type HistoryEntry = {
 };
 
 const HISTORY_SOURCE =
-  "https://opensheet.elk.sh/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/2";
+  "https://opensheet.elk.sh/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/liked_tracks";
 
 function parseDateValue(value?: string): number {
   if (!value) return 0;
@@ -105,7 +105,7 @@ export default async function HistoryPage() {
       <header className="flex items-center gap-3">
         <h1 className="text-3xl font-semibold tracking-tight">Downloaded history</h1>
         <a
-          href="https://docs.google.com/spreadsheets/d/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/edit?gid=2115605479#gid=2115605479"
+          href="https://docs.google.com/spreadsheets/d/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/edit?gid=1604167222#gid=1604167222"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex h-8 w-8 items-center justify-center rounded bg-muted text-white transition hover:bg-foreground"

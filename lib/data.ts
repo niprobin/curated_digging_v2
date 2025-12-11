@@ -1,7 +1,7 @@
 ﻿import { parseSheetDate } from "@/lib/utils";
 
-const PLAYLIST_URL = "https://opensheet.elk.sh/19q7ac_1HikdJK_mAoItd65khDHi0pNCR8PrdIcR6Fhc/all_tracks";
-const ALBUM_URL = "https://opensheet.elk.sh/1LOx-C1USXeC92Mtv0u6NizEvcTMWkKJNGiNTwAtSj3E/2";
+const PLAYLIST_URL = "https://opensheet.elk.sh/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/curators_tracks";
+const ALBUM_URL = "https://opensheet.elk.sh/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/albums_list";
 
 function sanitizeSheetValue(value?: string | null) {
   if (!value) return undefined;
