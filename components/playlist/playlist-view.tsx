@@ -145,14 +145,15 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
       setAudioLoading(true);
       setAudioInfo(null);
       setYamsUrl(null);
-      const response = await fetch(STREAMING_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          artist: entry.artist,
-          track: entry.track,
-          spotify_id: spotifyId,
-        }),
+      const params = new URLSearchParams({
+        artist: entry.artist,
+        track: entry.track,
+      });
+      if (spotifyId) {
+        params.set("spotify_id", spotifyId);
+      }
+      const response = await fetch(`${STREAMING_WEBHOOK_URL}?${params.toString()}`, {
+        method: "GET",
       });
       if (!response.ok) {
         throw new Error(`Webhook returned ${response.status}`);
