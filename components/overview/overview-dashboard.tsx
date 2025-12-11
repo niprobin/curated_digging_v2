@@ -43,11 +43,27 @@ export function OverviewDashboard() {
         .map((item) => {
           if (!item || typeof item !== "object") return null;
           const record = item as Record<string, unknown>;
-          const titleRaw = typeof record["title"] === "string" ? record["title"].trim() : "";
-          const artistRaw = typeof record["artist"] === "string" ? record["artist"].trim() : "";
+          const lowerCaseRecord = Object.entries(record).reduce<Record<string, unknown>>((acc, [key, value]) => {
+            acc[key.toLowerCase()] = value;
+            return acc;
+          }, {});
+          const titleCandidates = ["title", "track", "text"];
+          const artistCandidates = ["artist", "artists", "curator"];
+          const pickString = (keys: string[]) => {
+            for (const key of keys) {
+              const value = lowerCaseRecord[key];
+              if (typeof value === "string" && value.trim()) {
+                return value.trim();
+              }
+            }
+            return "";
+          };
+          const titleRaw = pickString(titleCandidates);
+          const artistRaw = pickString(artistCandidates);
           if (!titleRaw && !artistRaw) return null;
-          const uploadedAt = typeof record["uploaded_at"] === "string" ? record["uploaded_at"] : undefined;
-          const playlistsRaw = record["playlists"];
+          const uploadedAtValue = lowerCaseRecord["uploaded_at"] ?? lowerCaseRecord["uploadedat"];
+          const uploadedAt = typeof uploadedAtValue === "string" ? uploadedAtValue : undefined;
+          const playlistsRaw = lowerCaseRecord["playlists"] ?? lowerCaseRecord["playlist"];
           let playlists: string[] = [];
           if (Array.isArray(playlistsRaw)) {
             playlists = playlistsRaw
