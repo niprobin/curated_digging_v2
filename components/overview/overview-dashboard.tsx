@@ -75,12 +75,15 @@ export function OverviewDashboard() {
               .map((p) => p.trim())
               .filter(Boolean);
           }
-          return {
+          const base: SearchResult = {
             artist: artistRaw || "Unknown artist",
             title: titleRaw || "Untitled track",
-            uploadedAt,
             playlists,
-          } satisfies SearchResult;
+          };
+          if (uploadedAt) {
+            base.uploadedAt = uploadedAt;
+          }
+          return base;
         })
         .filter((row): row is SearchResult => Boolean(row));
       setSearchResults(normalized);
