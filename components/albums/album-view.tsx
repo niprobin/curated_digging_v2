@@ -26,17 +26,6 @@ type TrackForPlaylist = {
   explicit?: boolean;
 };
 
-const KRAKEN_HOSTS = [
-  "kraken.squid.wtf",
-  "aether.squid.wtf",
-  "triton.squid.wtf",
-  "zeus.squid.wtf",
-  "wolf.qqdl.site",
-  "katze.qqdl.site",
-  "maus.qqdl.site",
-  "hund.qqdl.site",
-] as const;
-
 const ALT_HOSTS = [
   "kraken.squid.wtf",
   "aether.squid.wtf",
@@ -49,6 +38,7 @@ const ALT_HOSTS = [
 ] as const;
 
 const STREAMING_ENABLED = false;
+const ALBUM_TRACKS_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-albums-tracks";
 
 export function AlbumView({ entries }: AlbumViewProps) {
   const {
@@ -362,33 +352,8 @@ export function AlbumView({ entries }: AlbumViewProps) {
     return payload;
   };
 
-  const fetchAlbumJsonWithFallback = React.useCallback(async (build: (host: string) => string) => {
-    let lastErr: unknown = null;
-    for (const host of KRAKEN_HOSTS) {
-      const url = build(host);
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          lastErr = new Error(`HTTP ${res.status}`);
-          continue;
-        }
-        const json = (await res.json()) as unknown;
-        return unwrapHostResponse(json);
-      } catch (error) {
-        lastErr = error;
-        continue;
-      }
-    }
-    throw lastErr ?? new Error("All album hosts failed");
-  }, []);
-
   function asRecord(u: unknown): Record<string, unknown> | null {
     return typeof u === "object" && u !== null ? (u as Record<string, unknown>) : null;
-  }
-
-  function pickString(obj: Record<string, unknown> | null | undefined, key: string): string | undefined {
-    const v = obj?.[key];
-    return typeof v === "string" ? v : undefined;
   }
 
   const fetchJsonWithFallback = React.useCallback(async (build: (host: string) => string) => {
@@ -684,6 +649,19 @@ export function AlbumView({ entries }: AlbumViewProps) {
     });
   };
 
+  const deriveAlbumMeta = (entry: AlbumEntry) => {
+    const nameParts = entry.name
+      .split("-")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (nameParts.length <= 1) {
+      return { albumTitle: entry.name.trim(), albumArtist: null as string | null };
+    }
+    const albumTitle = nameParts.pop() ?? entry.name;
+    const albumArtist = nameParts.join(" - ") || null;
+    return { albumTitle, albumArtist };
+  };
+
   const handleOpenExternal = async (entry: AlbumEntry) => {
     setExternalLoading((prev) => {
       const next = new Set(prev);
@@ -704,7 +682,6 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleOpenBinimum = async (entry: AlbumEntry) => {
     setExternalLoading((prev) => {
       const next = new Set(prev);
@@ -712,109 +689,74 @@ export function AlbumView({ entries }: AlbumViewProps) {
       return next;
     });
     try {
-      const q = sanitizeKrakenQuery(entry.name);
-      const searchJson = await fetchAlbumJsonWithFallback(
-        (host) => `https://${host}/search/?al=${encodeURIComponent(q)}`,
-      );
-      const id: string | undefined = (() => {
-        const root = asRecord(searchJson);
-        const albums = asRecord(root?.["albums"]);
-        const items = albums?.["items"];
-        if (Array.isArray(items) && items.length > 0) {
-          const first = asRecord(items[0]);
-          const v = first?.["id"];
-          if (typeof v === "string" || typeof v === "number") return String(v);
-        }
-        return undefined;
-      })();
-      if (id) {
-        // Fetch album details and render locally instead of opening external page
-        const albumJson = await fetchAlbumJsonWithFallback(
-          (host) => `https://${host}/album/?id=${encodeURIComponent(id)}`,
-        );
-        const metaContainer = Array.isArray(albumJson)
-          ? albumJson[0]
-          : asRecord(albumJson)?.["0"];
-        const tracksContainer = Array.isArray(albumJson)
-          ? albumJson[1]
-          : asRecord(albumJson)?.["1"];
-        const metaRec = asRecord(metaContainer);
-        const albumArtist: string =
-          pickString(metaRec, "artistName") || pickString(asRecord(metaRec?.["artist"]), "name") || "Unknown artist";
-        const albumName: string = pickString(metaRec, "title") || pickString(metaRec, "name") || entry.name;
-
-        const buildTrack = (u: unknown): TrackForPlaylist | null => {
-          const rec = asRecord(u);
-          if (!rec) return null;
-          const title = (rec["title"] || rec["name"]) as unknown;
-          if (typeof title !== "string") return null;
-          const artist =
-            (rec["artistName"] as unknown) || pickString(asRecord(rec["artist"]), "name") || albumArtist;
-          const urlCandidate =
-            (rec["OriginalTrackUrl"] as unknown) ||
-            (rec["originalURLTrack"] as unknown) ||
-            (rec["originalTrackURL"] as unknown) ||
-            (rec["url"] as unknown);
-          const url = typeof urlCandidate === "string" ? urlCandidate : undefined;
-          const idVal = rec["id"];
-          const id = typeof idVal === "string" || typeof idVal === "number" ? String(idVal) : undefined;
-          const durationRaw = rec["duration"];
-          const duration =
-            typeof durationRaw === "number"
-              ? durationRaw
-              : typeof durationRaw === "string" && durationRaw.trim() !== ""
-                ? Number(durationRaw)
-                : undefined;
-          const trackNumberRaw = rec["trackNumber"] ?? rec["track_number"];
-          const trackNumber =
-            typeof trackNumberRaw === "number"
-              ? trackNumberRaw
-              : typeof trackNumberRaw === "string" && trackNumberRaw.trim() !== ""
-                ? Number(trackNumberRaw)
-                : undefined;
-          const explicitRaw = rec["explicit"];
-          const explicit =
-            typeof explicitRaw === "boolean"
-              ? explicitRaw
-              : typeof explicitRaw === "string"
-                ? explicitRaw.toLowerCase() === "true"
-                : false;
-          const normalizedDuration =
-            typeof duration === "number" && Number.isFinite(duration) ? duration : undefined;
-          const normalizedTrack =
-            typeof trackNumber === "number" && Number.isFinite(trackNumber) ? trackNumber : undefined;
-          return {
-            title,
-            artist: typeof artist === "string" ? artist : albumArtist,
-            url,
-            id,
-            duration: normalizedDuration,
-            trackNumber: normalizedTrack,
-            explicit,
-          };
-        };
-
-        let tracks: TrackForPlaylist[] = [];
-        const itemsMaybe = asRecord(tracksContainer)?.["items"];
-        if (Array.isArray(itemsMaybe)) {
-          tracks = itemsMaybe
-            .map((wrap) => {
-              const inner = asRecord(wrap)?.["item"] ?? wrap;
-              return buildTrack(inner);
-            })
-            .filter((t): t is TrackForPlaylist => Boolean(t));
-        } else if (Array.isArray(tracksContainer)) {
-          tracks = (tracksContainer as unknown[])
-            .map((t) => buildTrack(t))
-            .filter((t): t is TrackForPlaylist => Boolean(t));
-        }
-        setBinimumDetails({ artist: albumArtist, name: albumName, tracks });
-        setYamsUrl(null);
-      } else {
-        console.warn("No binimum album id found for", entry.name);
+      const { albumTitle, albumArtist } = deriveAlbumMeta(entry);
+      const params = new URLSearchParams({
+        album: albumTitle ?? entry.name,
+        artist: albumArtist ?? entry.name,
+      });
+      const response = await fetch(`${ALBUM_TRACKS_WEBHOOK_URL}?${params.toString()}`, {
+        method: "GET",
+      });
+      if (!response.ok) {
+        throw new Error(`Webhook returned ${response.status}`);
       }
+      const data = (await response.json()) as {
+        tracks?: unknown[];
+        album?: string;
+        artist?: string;
+      } | null;
+      const normalizedArtist = typeof data?.artist === "string" && data.artist.trim() ? data.artist.trim() : albumArtist ?? "Unknown artist";
+      const normalizedAlbum = typeof data?.album === "string" && data.album.trim() ? data.album.trim() : albumTitle ?? entry.name;
+      const normalizeTrack = (raw: unknown): TrackForPlaylist | null => {
+        const rec = asRecord(raw);
+        if (!rec) return null;
+        const titleCandidate = rec["title"] ?? rec["name"];
+        if (typeof titleCandidate !== "string" || !titleCandidate.trim()) return null;
+        const artistCandidate = rec["artist"] ?? rec["artistName"];
+        const artistLabel =
+          (typeof artistCandidate === "string" && artistCandidate.trim()) || normalizedArtist;
+        const urlCandidate = rec["stream_url"] ?? rec["url"];
+        const url = typeof urlCandidate === "string" ? urlCandidate : undefined;
+        const idVal = rec["id"];
+        const id = typeof idVal === "string" || typeof idVal === "number" ? String(idVal) : undefined;
+        const durationRaw = rec["duration"];
+        const duration =
+          typeof durationRaw === "number"
+            ? durationRaw
+            : typeof durationRaw === "string" && durationRaw.trim() !== ""
+              ? Number(durationRaw)
+              : undefined;
+        const trackNumberRaw = rec["trackNumber"] ?? rec["track_number"];
+        const trackNumber =
+          typeof trackNumberRaw === "number"
+            ? trackNumberRaw
+            : typeof trackNumberRaw === "string" && trackNumberRaw.trim() !== ""
+              ? Number(trackNumberRaw)
+              : undefined;
+        const explicitRaw = rec["explicit"];
+        const explicit =
+          typeof explicitRaw === "boolean"
+            ? explicitRaw
+            : typeof explicitRaw === "string"
+              ? explicitRaw.toLowerCase() === "true"
+              : false;
+        return {
+          title: titleCandidate.trim(),
+          artist: artistLabel,
+          url,
+          id,
+          duration: typeof duration === "number" && Number.isFinite(duration) ? duration : undefined,
+          trackNumber: typeof trackNumber === "number" && Number.isFinite(trackNumber) ? trackNumber : undefined,
+          explicit,
+        };
+      };
+      const tracks = Array.isArray(data?.tracks)
+        ? data!.tracks.map((track) => normalizeTrack(track)).filter((t): t is TrackForPlaylist => Boolean(t))
+        : [];
+      setBinimumDetails({ artist: normalizedArtist, name: normalizedAlbum, tracks });
+      setYamsUrl(null);
     } catch (err) {
-      console.error("Failed to get Binimum link", err);
+      console.error("Failed to load album tracks", err);
     } finally {
       setExternalLoading((prev) => {
         const next = new Set(prev);
@@ -976,6 +918,17 @@ export function AlbumView({ entries }: AlbumViewProps) {
                         </div>
                       </div>
                       <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-primary hover:text-primary"
+                          title="Preview tracks"
+                          onClick={() => handleOpenBinimum(entry)}
+                          disabled={isExternalLoading}
+                        >
+                          <i className="fa-solid fa-play" aria-hidden />
+                          <span className="sr-only">Preview tracks</span>
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
