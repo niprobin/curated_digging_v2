@@ -11,25 +11,43 @@ export function AddToSongsForm() {
   const [playlist, setPlaylist] = React.useState<string>(PLAYLIST_OPTIONS[0] ?? "");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState(false);
+  const [success, setSuccess] = React.useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!value.trim() || !playlist) return;
     setSubmitting(true);
     setError(null);
-    setSuccess(false);
+    setSuccess(null);
     try {
       const res = await fetch(ADD_SONG_WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ "song-name": value.trim(), playlist }),
       });
-      if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
+      const text = await res.text();
+      let responseMessage: string | null = null;
+      try {
+        const data = JSON.parse(text) as { message?: string };
+        if (typeof data?.message === "string" && data.message.trim()) {
+          responseMessage = data.message.trim();
+        }
+      } catch {
+        if (text.trim()) {
+          responseMessage = text.trim();
+        }
+      }
+      if (!res.ok) {
+        throw new Error(responseMessage ?? `Webhook returned ${res.status}`);
+      }
       setValue("");
-      setSuccess(true);
-    } catch {
-      setError("Failed to submit. Please try again.");
+      setSuccess(responseMessage ?? "Song sent to your workflow.");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message || "Failed to submit. Please try again.");
+      } else {
+        setError("Failed to submit. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +83,7 @@ export function AddToSongsForm() {
         ))}
       </select>
       {error && <p className="text-sm text-rose-500">{error}</p>}
-      {success && <p className="text-sm text-emerald-500">Song sent to your workflow.</p>}
+      {success && <p className="text-sm text-emerald-500">{success}</p>}
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={() => setValue("")} disabled={submitting}>
           Clear
