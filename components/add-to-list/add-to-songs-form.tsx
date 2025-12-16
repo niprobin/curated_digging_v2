@@ -39,7 +39,7 @@ export function AddToSongsForm() {
         throw new Error(responseMessage ?? `Webhook returned ${res.status}`);
       }
       setValue("");
-      setSuccess(responseMessage ?? "Song sent to your workflow.");
+      setStatusMessage(responseMessage ?? "Song sent to your workflow.");
     } catch (err) {
       if (err instanceof Error) {
         setStatusMessage(err.message || "Failed to submit. Please try again.");
