@@ -10,15 +10,13 @@ export function AddToSongsForm() {
   const [value, setValue] = React.useState("");
   const [playlist, setPlaylist] = React.useState<string>(PLAYLIST_OPTIONS[0] ?? "");
   const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!value.trim() || !playlist) return;
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
+    setStatusMessage(null);
     try {
       const res = await fetch(ADD_SONG_WEBHOOK, {
         method: "POST",
@@ -44,9 +42,9 @@ export function AddToSongsForm() {
       setSuccess(responseMessage ?? "Song sent to your workflow.");
     } catch (err) {
       if (err instanceof Error) {
-        setError(err.message || "Failed to submit. Please try again.");
+        setStatusMessage(err.message || "Failed to submit. Please try again.");
       } else {
-        setError("Failed to submit. Please try again.");
+        setStatusMessage("Failed to submit. Please try again.");
       }
     } finally {
       setSubmitting(false);
@@ -82,8 +80,11 @@ export function AddToSongsForm() {
           </option>
         ))}
       </select>
-      {error && <p className="text-sm text-rose-500">{error}</p>}
-      {success && <p className="text-sm text-emerald-500">{success}</p>}
+      {statusMessage && (
+        <p className="rounded-md border border-border bg-card/60 px-3 py-2 text-sm text-muted-foreground">
+          {statusMessage}
+        </p>
+      )}
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" onClick={() => setValue("")} disabled={submitting}>
           Clear
