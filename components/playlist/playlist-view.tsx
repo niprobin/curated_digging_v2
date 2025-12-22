@@ -422,20 +422,6 @@ export function PlaylistView({ entries, curators }: PlaylistViewProps) {
                       <span className="text-sm font-semibold">Y</span>
                       <span className="sr-only">Search YAMS.TF</span>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Search on Monochrome.tf"
-                      onClick={() => {
-                        setAudioInfo(null);
-                        setAudioLoading(false);
-                        const query = sanitizeTrackQuery(`${entry.artist} ${entry.track}`);
-                        setYamsUrl(`https://monochrome.tf/#search/${encodeURIComponent(query)}`);
-                      }}
-                    >
-                      <span className="text-sm font-semibold">M</span>
-                      <span className="sr-only">Search on Monochrome</span>
-                    </Button>
                       <Button
                         variant="ghost"
                         size="icon"

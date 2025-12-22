@@ -11,17 +11,23 @@ export function AddToSongsForm() {
   const [playlist, setPlaylist] = React.useState<string>(PLAYLIST_OPTIONS[0] ?? "");
   const [submitting, setSubmitting] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const hasValidFormat = value.includes(" - ");
+  const formatted = value.trim();
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!value.trim() || !playlist) return;
+    if (!formatted || !playlist) return;
+    if (!hasValidFormat) {
+      setStatusMessage("Use the format: Artist - Song.");
+      return;
+    }
     setSubmitting(true);
     setStatusMessage(null);
     try {
       const res = await fetch(ADD_SONG_WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ "song-name": value.trim(), playlist }),
+        body: JSON.stringify({ "song-name": formatted, playlist }),
       });
       const text = await res.text();
       let responseMessage: string | null = null;
@@ -64,6 +70,9 @@ export function AddToSongsForm() {
         className="w-full rounded-md border border-border bg-card p-2 text-sm outline-none focus:border-primary"
         placeholder="e.g. Artist - Song"
       />
+      {value && !hasValidFormat && (
+        <p className="text-xs text-amber-500">Please use the format Artist - Track.</p>
+      )}
       <label className="block text-sm font-medium text-foreground" htmlFor="playlist-select">
         Playlist
       </label>
@@ -89,7 +98,7 @@ export function AddToSongsForm() {
         <Button type="button" variant="ghost" onClick={() => setValue("")} disabled={submitting}>
           Clear
         </Button>
-        <Button type="submit" disabled={!value.trim() || !playlist || submitting}>
+        <Button type="submit" disabled={!formatted || !playlist || !hasValidFormat || submitting}>
           {submitting ? "Sending..." : "Submit"}
         </Button>
       </div>
