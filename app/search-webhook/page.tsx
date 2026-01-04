@@ -5,7 +5,7 @@ import { useWebhookGet } from "@/hooks/use-webhook";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-const WEBHOOK_URL = "https://n8n.niprobin.com/webhook-test/search";
+const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/search";
 
 export default function SearchWebhookPage() {
   const [searchQuery, setSearchQuery] = useState("");
