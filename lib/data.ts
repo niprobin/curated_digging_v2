@@ -1,7 +1,5 @@
 ﻿import { parseSheetDate } from "@/lib/utils";
-
-const PLAYLIST_URL = "https://opensheet.elk.sh/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/curators_tracks";
-const ALBUM_URL = "https://opensheet.elk.sh/1UUsfw3UMcHcJUYWoLYZmwiS7nDFc98oM08pgtfx2GOg/albums_list";
+import { DATA_SOURCES, CACHE_CONFIG } from "@/lib/config";
 
 function sanitizeSheetValue(value?: string | null) {
   if (!value) return undefined;
@@ -62,7 +60,7 @@ type RawAlbumEntry = {
 async function fetchJson<T>(url: string, label: string, tag: string): Promise<T | null> {
   try {
     const response = await fetch(url, {
-      next: { revalidate: 60 * 30, tags: [tag] },
+      next: { revalidate: CACHE_CONFIG.revalidateTime, tags: [tag] },
     });
     if (!response.ok) {
       console.warn(`[data] ${label} responded with ${response.status}`);
@@ -76,7 +74,7 @@ async function fetchJson<T>(url: string, label: string, tag: string): Promise<T 
 }
 
 export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
-  const data = await fetchJson<RawPlaylistEntry[]>(PLAYLIST_URL, "playlists", "playlists");
+  const data = await fetchJson<RawPlaylistEntry[]>(DATA_SOURCES.playlists, "playlists", "playlists");
   if (!data) return [];
   const occurrences = new Map<string, number>();
   return data
@@ -106,7 +104,7 @@ export async function getPlaylistEntries(): Promise<PlaylistEntry[]> {
 }
 
 export async function getAlbumEntries(): Promise<AlbumEntry[]> {
-  const data = await fetchJson<RawAlbumEntry[]>(ALBUM_URL, "albums", "albums");
+  const data = await fetchJson<RawAlbumEntry[]>(DATA_SOURCES.albums, "albums", "albums");
   if (!data) return [];
   const occurrences = new Map<string, number>();
   return data
