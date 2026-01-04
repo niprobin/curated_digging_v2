@@ -9,8 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLikedHistory } from "@/components/history/history-provider";
 import { filterByTimeWindow } from "@/lib/filters";
-import { formatRelativeDate, parseSheetDate, formatOrdinalLongDate } from "@/lib/utils";
+import {
+  formatRelativeDate,
+  parseSheetDate,
+  formatOrdinalLongDate,
+  sanitizeQuery,
+  sanitizeKrakenQuery,
+} from "@/lib/utils";
 import type { AlbumEntry } from "@/lib/data";
+import { useAudioPlayer } from "@/hooks/use-audio-player";
+import { useResizePagination } from "@/hooks/use-pagination";
+import { useLocalStorage, useLocalStorageSet, useLocalStorageBoolean } from "@/hooks/use-local-storage";
+import { useWebhookGet, useWebhook } from "@/hooks/use-webhook";
+import { AudioPlayerBar } from "@/components/audio/audio-player";
+import { PlaylistDrawer, type PlaylistDrawerTrack } from "@/components/playlist/playlist-drawer";
+import type { PlaylistOption } from "@/components/playlist/playlist-options";
+import { WEBHOOKS, EXTERNAL_SERVICES, STORAGE_KEYS, FEATURES } from "@/lib/config";
 
 interface AlbumViewProps {
   entries: AlbumEntry[];
@@ -26,161 +40,123 @@ type TrackForPlaylist = {
   explicit?: boolean;
 };
 
-const STREAMING_ENABLED = true;
-const ALBUM_TRACKS_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-albums-tracks";
-const STREAMING_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/get-track-url";
+type BinimumDetails = {
+  artist: string;
+  name: string;
+  tracks: TrackForPlaylist[];
+};
 
 export function AlbumView({ entries }: AlbumViewProps) {
   const {
     state: { timeWindow, showLikedOnly },
   } = useFilters();
-  const [pageSize, setPageSize] = React.useState(5);
-  const [page, setPage] = React.useState(1);
   const { isLiked, like, unlike } = useLikedHistory();
-  const ALBUM_WEBHOOK_URL = "https://n8n.niprobin.com/webhook/album-webhook";
+
+  // Local storage states with custom hooks
+  const [ratings, setRatings] = useLocalStorage<Record<string, number>>(STORAGE_KEYS.albumRatings, {});
+  const [dismissedIds, setDismissedIds] = useLocalStorageSet(STORAGE_KEYS.albumDismissed);
+  const [bookmarkedIds, setBookmarkedIds] = useLocalStorageSet(STORAGE_KEYS.albumBookmarks);
+  const [showBookmarkedOnly, setShowBookmarkedOnly] = useLocalStorageBoolean(STORAGE_KEYS.albumBookmarkFilter, false);
+
+  // Component state
+  const [searchQuery, setSearchQuery] = React.useState("");
   const [externalLoading, setExternalLoading] = React.useState<Set<string>>(() => new Set());
   const [yamsUrl, setYamsUrl] = React.useState<string | null>(null);
-  const [binimumDetails, setBinimumDetails] = React.useState<
-    | null
-    | {
-        artist: string;
-        name: string;
-        tracks: TrackForPlaylist[];
-      }
-  >(null);
-  const [audioLoading, setAudioLoading] = React.useState(false);
-  const [audioInfo, setAudioInfo] = React.useState<{
-    url: string;
-    title: string;
-    artist: string;
-  } | null>(null);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [binimumDetails, setBinimumDetails] = React.useState<BinimumDetails | null>(null);
   const [currentTrackIndex, setCurrentTrackIndex] = React.useState<number | null>(null);
-  // Playlist drawer state (reuse Tracks page behaviour)
-  const WEBHOOK_URL = "https://n8n.niprobin.com/webhook/add-to-playlist";
-  const PLAYLIST_OPTIONS = [
-    "Afrobeat & Highlife",
-    "Beats",
-    "Bossa Nova",
-    "Brazilian Music",
-    "Disco Dancefloor",
-    "DNB",
-    "Downtempo Trip-hop",
-    "Funk & Rock",
-    "Hip-hop",
-    "House Chill",
-    "House Dancefloor",
-    "Jazz Classic",
-    "Jazz Funk",
-    "Latin Music",
-    "Morning Chill",
-    "Neo Soul",
-    "Reggae",
-    "RNB Mood",
-    "Soul Oldies",
-  ] as const;
-  type PlaylistOption = (typeof PLAYLIST_OPTIONS)[number];
-  const [drawerTrack, setDrawerTrack] = React.useState<TrackForPlaylist | null>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [submitError, setSubmitError] = React.useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = React.useState("");
+  const [openRatingForId, setOpenRatingForId] = React.useState<string | null>(null);
+  const popoverRef = React.useRef<HTMLDivElement | null>(null);
 
+  // Playlist drawer state
+  const [drawerTrack, setDrawerTrack] = React.useState<PlaylistDrawerTrack | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = React.useState<PlaylistOption | null>(null);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+
+  // Audio player with track end callback
+  const player = useAudioPlayer({
+    onTrackEnd: () => {
+      if (binimumDetails && binimumDetails.tracks.length > 0) {
+        const current = currentTrackIndex ?? -1;
+        const nextIndex = current + 1;
+        if (nextIndex < binimumDetails.tracks.length) {
+          playTrack(binimumDetails.tracks[nextIndex], nextIndex);
+        } else {
+          setCurrentTrackIndex(null);
+        }
+      }
+    },
+  });
+
+  // Webhook for adding to playlist
+  const { trigger: addToPlaylist, isLoading: isSubmitting } = useWebhook({
+    url: WEBHOOKS.addToPlaylist,
+    onSuccess: () => {
+      setDrawerTrack(null);
+      setSelectedPlaylist(null);
+    },
+    onError: () => {
+      setSubmitError("Could not reach the playlist webhook. Please try again.");
+    },
+  });
+
+  // Webhook for album actions (rate, dismiss)
+  const { trigger: albumAction } = useWebhook({
+    url: WEBHOOKS.albumAction,
+  });
+
+  // Reset track index when binimum details change
   React.useEffect(() => {
     setCurrentTrackIndex(null);
   }, [binimumDetails]);
 
-  // Simple local persistence for album ratings (1-5)
-  const RATINGS_STORAGE_KEY = "curated-digging:album-ratings";
-  const [ratings, setRatings] = React.useState<Record<string, number>>({});
-  const [openRatingForId, setOpenRatingForId] = React.useState<string | null>(null);
-  const popoverRef = React.useRef<HTMLDivElement | null>(null);
+  // Filtering logic
+  const filtered = React.useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const matches = entries.filter((entry) => {
+      if (dismissedIds.has(entry.id)) return false;
+      if (entry.liked || entry.checked) return false;
+      if (!filterByTimeWindow(entry.addedAt, timeWindow)) return false;
 
-  // Local remove/dismiss state for albums
-  const DISMISSED_STORAGE_KEY = "curated-digging:album-dismissed";
-  const [dismissedIds, setDismissedIds] = React.useState<Set<string>>(() => new Set());
-  const BOOKMARKS_STORAGE_KEY = "curated-digging:album-bookmarks";
-  const BOOKMARK_FILTER_STORAGE_KEY = "curated-digging:album-bookmark-filter";
-  const [bookmarkedIds, setBookmarkedIds] = React.useState<Set<string>>(() => new Set());
-  const [showBookmarkedOnly, setShowBookmarkedOnly] = React.useState(false);
+      const liked = isLiked(entry.id, entry.liked) || entry.liked;
+      if (showLikedOnly && !liked) return false;
+      if (showBookmarkedOnly && !bookmarkedIds.has(entry.id)) return false;
+      if (normalizedSearch && !entry.name.toLowerCase().includes(normalizedSearch)) return false;
 
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(RATINGS_STORAGE_KEY);
-      if (raw) setRatings(JSON.parse(raw));
-    } catch {
-      // ignore
+      return true;
+    });
+
+    // Prioritize bookmarked albums
+    if (showBookmarkedOnly || bookmarkedIds.size === 0) {
+      return matches;
     }
-  }, []);
 
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(RATINGS_STORAGE_KEY, JSON.stringify(ratings));
-    } catch {
-      // ignore
-    }
-  }, [ratings]);
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(DISMISSED_STORAGE_KEY);
-      if (raw) setDismissedIds(new Set<string>(JSON.parse(raw)));
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(Array.from(dismissedIds)));
-    } catch {
-      // ignore
-    }
-  }, [dismissedIds]);
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const cleaned = parsed.filter((id): id is string => typeof id === "string");
-          setBookmarkedIds(new Set(cleaned));
-        }
+    const prioritized: AlbumEntry[] = [];
+    const others: AlbumEntry[] = [];
+    matches.forEach((entry) => {
+      if (bookmarkedIds.has(entry.id)) {
+        prioritized.push(entry);
+      } else {
+        others.push(entry);
       }
-    } catch {
-      // ignore
-    }
-  }, []);
+    });
+    return [...prioritized, ...others];
+  }, [entries, timeWindow, showLikedOnly, showBookmarkedOnly, bookmarkedIds, isLiked, dismissedIds, searchQuery]);
 
+  // Pagination with resize hook
+  const pagination = useResizePagination(filtered.length, 118, {
+    minPageSize: 3,
+    maxPageSize: 12,
+    fallbackHeight: 540,
+  });
+
+  const paged = filtered.slice(pagination.startIndex, pagination.endIndex);
+
+  // Reset pagination when filters change
   React.useEffect(() => {
-    try {
-      window.localStorage.setItem(BOOKMARKS_STORAGE_KEY, JSON.stringify(Array.from(bookmarkedIds)));
-    } catch {
-      // ignore
-    }
-  }, [bookmarkedIds]);
+    pagination.resetToFirstPage();
+  }, [timeWindow, showLikedOnly, showBookmarkedOnly, entries.length, searchQuery, pagination.pageSize]);
 
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(BOOKMARK_FILTER_STORAGE_KEY);
-      if (raw) {
-        setShowBookmarkedOnly(raw === "true");
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(BOOKMARK_FILTER_STORAGE_KEY, showBookmarkedOnly ? "true" : "false");
-    } catch {
-      // ignore
-    }
-  }, [showBookmarkedOnly]);
-
+  // Close rating popover on click outside or Escape
   React.useEffect(() => {
     if (!openRatingForId) return;
     const onKey = (e: KeyboardEvent) => {
@@ -199,6 +175,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     };
   }, [openRatingForId]);
 
+  // Close YAMS on Escape
   React.useEffect(() => {
     if (!yamsUrl) return;
     const onKey = (e: KeyboardEvent) => {
@@ -208,93 +185,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [yamsUrl]);
 
-  const filtered = React.useMemo(() => {
-    const normalizedSearch = searchQuery.trim().toLowerCase();
-    const matches = entries.filter((entry) => {
-      if (dismissedIds.has(entry.id)) {
-        return false;
-      }
-      // Always hide albums already liked
-      if (entry.liked) {
-        return false;
-      }
-      // Hide checked albums
-      if (entry.checked) {
-        return false;
-      }
-      if (!filterByTimeWindow(entry.addedAt, timeWindow)) {
-        return false;
-      }
-      const liked = isLiked(entry.id, entry.liked) || entry.liked;
-      if (showLikedOnly && !liked) {
-        return false;
-      }
-      if (showBookmarkedOnly && !bookmarkedIds.has(entry.id)) {
-        return false;
-      }
-      if (normalizedSearch && !entry.name.toLowerCase().includes(normalizedSearch)) {
-        return false;
-      }
-      return true;
-    });
-
-    if (showBookmarkedOnly || bookmarkedIds.size === 0) {
-      return matches;
-    }
-
-    const prioritized: AlbumEntry[] = [];
-    const others: AlbumEntry[] = [];
-    matches.forEach((entry) => {
-      if (bookmarkedIds.has(entry.id)) {
-        prioritized.push(entry);
-      } else {
-        others.push(entry);
-      }
-    });
-    return [...prioritized, ...others];
-  }, [entries, timeWindow, showLikedOnly, showBookmarkedOnly, bookmarkedIds, isLiked, dismissedIds, searchQuery]);
-
-  React.useEffect(() => {
-    setPage(1);
-  }, [timeWindow, showLikedOnly, showBookmarkedOnly, entries.length, searchQuery, pageSize]);
-
-  const listRef = React.useRef<HTMLDivElement | null>(null);
-  const recomputePageSize = React.useCallback((height: number) => {
-    const estimatedRowHeight = 118;
-    const rows = Math.floor(height / estimatedRowHeight);
-    const clamped = Number.isFinite(rows) ? Math.max(3, Math.min(12, rows)) : 5;
-    setPageSize((prev) => (prev === clamped ? prev : clamped));
-  }, []);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const el = listRef.current;
-    if (!el) {
-      const viewport = window.innerHeight || 900;
-      recomputePageSize(Math.max(320, viewport - 360));
-      return;
-    }
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      recomputePageSize(entry.contentRect.height);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [recomputePageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const start = (page - 1) * pageSize;
-  const end = start + pageSize;
-  const paged = filtered.slice(start, end);
-
-  React.useEffect(() => {
-    const maxPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    if (page > maxPages) {
-      setPage(maxPages);
-    }
-  }, [filtered.length, page, pageSize]);
-
+  // Handle like/unlike
   const handleLike = (entry: AlbumEntry, liked: boolean) => {
     if (liked) {
       like(
@@ -306,208 +197,21 @@ export function AlbumView({ entries }: AlbumViewProps) {
           url: entry.spotifyUrl,
           artworkUrl: entry.coverUrl,
         },
-        entry.liked,
+        entry.liked
       );
     } else {
       unlike(entry.id, entry.liked);
     }
   };
 
-  const sanitizeQuery = (value: string) => {
-    const noDiacritics = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const cleaned = noDiacritics.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
-    return cleaned;
-  };
-
-  // Kraken (Binimum) can be sensitive to certain special characters.
-  // Remove dashes and parentheses as per requested behaviour.
-  const sanitizeKrakenQuery = (value: string) => {
-    const base = sanitizeQuery(value);
-    return base.replace(/[-()]/g, " ").replace(/\s+/g, " ").trim();
-  };
-
-  function asRecord(u: unknown): Record<string, unknown> | null {
-    return typeof u === "object" && u !== null ? (u as Record<string, unknown>) : null;
-  }
-
-  const togglePlay = () => {
-    const el = audioRef.current;
-    if (!el || !STREAMING_ENABLED) return;
-    if (el.paused) {
-      el.play().catch(() => setIsPlaying(false));
-    } else {
-      el.pause();
-    }
-  };
-
-  const [currentTime, setCurrentTime] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
-  const onSeek = (value: number) => {
-    const el = audioRef.current;
-    if (!el || !Number.isFinite(value)) return;
-    const next = Math.min(Math.max(0, value), duration || 0);
-    el.currentTime = next;
-    setCurrentTime(next);
-  };
-  const fmtTime = (s: number) => {
-    if (!Number.isFinite(s)) return "0:00";
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60)
-      .toString()
-      .padStart(2, "0");
-    return `${m}:${sec}`;
-  };
-
-  const handleAddToPlaylist = async () => {
-    if (!drawerTrack || !selectedPlaylist) return;
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      const body: Record<string, unknown> = {
-        playlist: selectedPlaylist,
-        artist: drawerTrack.artist,
-        track: drawerTrack.title,
-        checked: "TRUE",
-        liked: "TRUE",
-      };
-      const res = await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
-      setDrawerTrack(null);
-      setSelectedPlaylist(null);
-    } catch {
-      setSubmitError("Could not reach the playlist webhook. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const playDirect = React.useCallback(async (url: string, title: string, artist: string) => {
-    setAudioInfo({ url, title, artist });
-    setTimeout(() => {
-      try {
-        if (audioRef.current) {
-          audioRef.current.play().catch(() => setIsPlaying(false));
-        }
-      } catch {}
-    }, 50);
-  }, []);
-
-  const playTrack = React.useCallback(
-    async (track: TrackForPlaylist, index?: number) => {
-      const { artist, title, url: urlHint, id } = track;
-      const resolveIndex = () => {
-        if (typeof index === "number") return index;
-        if (!binimumDetails) return null;
-        const idx = binimumDetails.tracks.findIndex((t) => {
-          if (track.id && t.id && track.id === t.id) return true;
-          return t.title === track.title && t.artist === track.artist;
-        });
-        return idx >= 0 ? idx : null;
-      };
-      const resolvedIndex = resolveIndex();
-      const finalizeIndex = () => {
-        if (resolvedIndex !== null && resolvedIndex >= 0) {
-          setCurrentTrackIndex(resolvedIndex);
-        } else {
-          setCurrentTrackIndex(null);
-        }
-      };
-      const playFromUrl = async (sourceUrl: string, resolvedTitle: string, resolvedArtist: string) => {
-        await playDirect(sourceUrl, resolvedTitle, resolvedArtist);
-        finalizeIndex();
-      };
-
-      const tryWebhook = async () => {
-        const params = new URLSearchParams({
-          artist,
-          track: title,
-        });
-        if (id) params.set("track_id", id);
-        const response = await fetch(`${STREAMING_WEBHOOK_URL}?${params.toString()}`, {
-          method: "GET",
-        });
-        if (!response.ok) {
-          throw new Error(`Webhook returned ${response.status}`);
-        }
-        const data = (await response.json()) as { stream_url?: string; title?: string; artist?: string } | null;
-        const streamUrl = typeof data?.stream_url === "string" ? data.stream_url : null;
-        if (!streamUrl) throw new Error("Missing stream url");
-        const resolvedTitle = typeof data?.title === "string" && data.title.trim() ? data.title.trim() : title;
-        const resolvedArtist = typeof data?.artist === "string" && data.artist.trim() ? data.artist.trim() : artist;
-        await playFromUrl(streamUrl, resolvedTitle, resolvedArtist);
-      };
-
-      try {
-        setAudioLoading(true);
-        setAudioInfo(null);
-        await tryWebhook();
-        return;
-      } catch (error) {
-        console.error("Failed to fetch streaming URL", error);
-        if (urlHint) {
-          await playFromUrl(urlHint, title, artist);
-          return;
-        }
-        setAudioInfo(null);
-      } finally {
-        setAudioLoading(false);
-      }
-    },
-    [binimumDetails, playDirect],
-  );
-
-  const playNextTrack = React.useCallback(() => {
-    if (!binimumDetails || binimumDetails.tracks.length === 0) return;
-    const current = currentTrackIndex ?? -1;
-    const nextIndex = current + 1;
-    if (nextIndex < binimumDetails.tracks.length) {
-      void playTrack(binimumDetails.tracks[nextIndex], nextIndex);
-    } else {
-      setCurrentTrackIndex(null);
-      setIsPlaying(false);
-    }
-  }, [binimumDetails, currentTrackIndex, playTrack]);
-
-  React.useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => {
-      setIsPlaying(false);
-      playNextTrack();
-    };
-    const onTime = () => setCurrentTime(el.currentTime || 0);
-    const onLoaded = () => setDuration(el.duration || 0);
-    el.addEventListener("play", onPlay);
-    el.addEventListener("pause", onPause);
-    el.addEventListener("ended", onEnded);
-    el.addEventListener("timeupdate", onTime);
-    el.addEventListener("loadedmetadata", onLoaded);
-    return () => {
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("pause", onPause);
-      el.removeEventListener("ended", onEnded);
-      el.removeEventListener("timeupdate", onTime);
-      el.removeEventListener("loadedmetadata", onLoaded);
-    };
-  }, [audioInfo, playNextTrack]);
-
+  // Set album rating
   const setRating = async (entry: AlbumEntry, value: number) => {
     try {
-      await fetch(ALBUM_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          release_name: entry.name,
-          checked: true,
-          liked: true,
-          rating: value,
-        }),
+      await albumAction({
+        release_name: entry.name,
+        checked: true,
+        liked: true,
+        rating: value,
       });
       setRatings((prev) => ({ ...prev, [entry.id]: value }));
       const alreadyLiked = isLiked(entry.id, entry.liked) || entry.liked;
@@ -521,6 +225,7 @@ export function AlbumView({ entries }: AlbumViewProps) {
     }
   };
 
+  // Toggle bookmark
   const toggleBookmark = (entry: AlbumEntry) => {
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
@@ -533,134 +238,14 @@ export function AlbumView({ entries }: AlbumViewProps) {
     });
   };
 
-  const deriveAlbumMeta = (entry: AlbumEntry) => {
-    const nameParts = entry.name
-      .split("-")
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (nameParts.length <= 1) {
-      return { albumTitle: entry.name.trim(), albumArtist: null as string | null };
-    }
-    const albumTitle = nameParts.pop() ?? entry.name;
-    const albumArtist = nameParts.join(" - ") || null;
-    return { albumTitle, albumArtist };
-  };
-
-  const handleOpenExternal = async (entry: AlbumEntry) => {
-    setExternalLoading((prev) => {
-      const next = new Set(prev);
-      next.add(entry.id);
-      return next;
-    });
-    try {
-      setBinimumDetails(null);
-      const clean = sanitizeKrakenQuery(entry.name);
-      const url = `https://yams.tf/#/search/${encodeURIComponent(clean)}`;
-      setYamsUrl(url);
-    } finally {
-      setExternalLoading((prev) => {
-        const next = new Set(prev);
-        next.delete(entry.id);
-        return next;
-      });
-    }
-  };
-
-  const handleOpenBinimum = async (entry: AlbumEntry) => {
-    setExternalLoading((prev) => {
-      const next = new Set(prev);
-      next.add(entry.id);
-      return next;
-    });
-    try {
-      const { albumTitle, albumArtist } = deriveAlbumMeta(entry);
-      const params = new URLSearchParams({
-        album: albumTitle ?? entry.name,
-        artist: albumArtist ?? entry.name,
-      });
-      const response = await fetch(`${ALBUM_TRACKS_WEBHOOK_URL}?${params.toString()}`, {
-        method: "GET",
-      });
-      if (!response.ok) {
-        throw new Error(`Webhook returned ${response.status}`);
-      }
-      const data = (await response.json()) as {
-        tracks?: unknown[];
-        album?: string;
-        artist?: string;
-      } | null;
-      const normalizedArtist = typeof data?.artist === "string" && data.artist.trim() ? data.artist.trim() : albumArtist ?? "Unknown artist";
-      const normalizedAlbum = typeof data?.album === "string" && data.album.trim() ? data.album.trim() : albumTitle ?? entry.name;
-      const normalizeTrack = (raw: unknown): TrackForPlaylist | null => {
-        const rec = asRecord(raw);
-        if (!rec) return null;
-        const titleCandidate = rec["title"] ?? rec["name"];
-        if (typeof titleCandidate !== "string" || !titleCandidate.trim()) return null;
-        const artistCandidate = rec["artist"] ?? rec["artistName"];
-        const artistLabel =
-          (typeof artistCandidate === "string" && artistCandidate.trim()) || normalizedArtist;
-        const urlCandidate = rec["stream_url"] ?? rec["url"];
-        const url = typeof urlCandidate === "string" ? urlCandidate : undefined;
-        const idVal = rec["id"];
-        const id = typeof idVal === "string" || typeof idVal === "number" ? String(idVal) : undefined;
-        const durationRaw = rec["duration"];
-        const duration =
-          typeof durationRaw === "number"
-            ? durationRaw
-            : typeof durationRaw === "string" && durationRaw.trim() !== ""
-              ? Number(durationRaw)
-              : undefined;
-        const trackNumberRaw = rec["trackNumber"] ?? rec["track_number"];
-        const trackNumber =
-          typeof trackNumberRaw === "number"
-            ? trackNumberRaw
-            : typeof trackNumberRaw === "string" && trackNumberRaw.trim() !== ""
-              ? Number(trackNumberRaw)
-              : undefined;
-        const explicitRaw = rec["explicit"];
-        const explicit =
-          typeof explicitRaw === "boolean"
-            ? explicitRaw
-            : typeof explicitRaw === "string"
-              ? explicitRaw.toLowerCase() === "true"
-              : false;
-        return {
-          title: titleCandidate.trim(),
-          artist: artistLabel,
-          url,
-          id,
-          duration: typeof duration === "number" && Number.isFinite(duration) ? duration : undefined,
-          trackNumber: typeof trackNumber === "number" && Number.isFinite(trackNumber) ? trackNumber : undefined,
-          explicit,
-        };
-      };
-      const tracks = Array.isArray(data?.tracks)
-        ? data!.tracks.map((track) => normalizeTrack(track)).filter((t): t is TrackForPlaylist => Boolean(t))
-        : [];
-      setBinimumDetails({ artist: normalizedArtist, name: normalizedAlbum, tracks });
-      setYamsUrl(null);
-    } catch (err) {
-      console.error("Failed to load album tracks", err);
-    } finally {
-      setExternalLoading((prev) => {
-        const next = new Set(prev);
-        next.delete(entry.id);
-        return next;
-      });
-    }
-  };
-
+  // Dismiss album
   const handleDismiss = async (entry: AlbumEntry) => {
     try {
-      await fetch(ALBUM_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          release_name: entry.name,
-          checked: true,
-          liked: false,
-          rating: null,
-        }),
+      await albumAction({
+        release_name: entry.name,
+        checked: true,
+        liked: false,
+        rating: null,
       });
       setDismissedIds((prev) => {
         const next = new Set(prev);
@@ -676,6 +261,160 @@ export function AlbumView({ entries }: AlbumViewProps) {
     } catch (err) {
       console.error("Failed to send album dismiss webhook", err);
     }
+  };
+
+  // Open YAMS external viewer
+  const handleOpenExternal = async (entry: AlbumEntry) => {
+    setExternalLoading((prev) => new Set(prev).add(entry.id));
+    try {
+      setBinimumDetails(null);
+      const clean = sanitizeKrakenQuery(entry.name);
+      setYamsUrl(EXTERNAL_SERVICES.yamsSearch(clean));
+    } finally {
+      setExternalLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  };
+
+  // Helper to derive album metadata from name
+  const deriveAlbumMeta = (name: string) => {
+    const nameParts = name
+      .split("-")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (nameParts.length <= 1) {
+      return { albumTitle: name.trim(), albumArtist: null as string | null };
+    }
+    const albumTitle = nameParts.pop() ?? name;
+    const albumArtist = nameParts.join(" - ") || null;
+    return { albumTitle, albumArtist };
+  };
+
+  // Open Binimum track preview
+  const handleOpenBinimum = async (entry: AlbumEntry) => {
+    setExternalLoading((prev) => new Set(prev).add(entry.id));
+    try {
+      const { albumTitle, albumArtist } = deriveAlbumMeta(entry.name);
+      const params = {
+        album: albumTitle ?? entry.name,
+        artist: albumArtist ?? entry.name,
+      };
+
+      const response = await fetch(`${WEBHOOKS.getAlbumTracks}?${new URLSearchParams(params).toString()}`);
+      if (!response.ok) throw new Error(`Webhook returned ${response.status}`);
+
+      const data = (await response.json()) as {
+        tracks?: unknown[];
+        album?: string;
+        artist?: string;
+      };
+
+      const normalizedArtist =
+        typeof data?.artist === "string" && data.artist.trim() ? data.artist.trim() : albumArtist ?? "Unknown artist";
+      const normalizedAlbum =
+        typeof data?.album === "string" && data.album.trim() ? data.album.trim() : albumTitle ?? entry.name;
+
+      const normalizeTrack = (raw: unknown): TrackForPlaylist | null => {
+        const rec = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
+        if (!rec) return null;
+
+        const titleCandidate = rec["title"] ?? rec["name"];
+        if (typeof titleCandidate !== "string" || !titleCandidate.trim()) return null;
+
+        const artistCandidate = rec["artist"] ?? rec["artistName"];
+        const artistLabel = (typeof artistCandidate === "string" && artistCandidate.trim()) || normalizedArtist;
+
+        const urlCandidate = rec["stream_url"] ?? rec["url"];
+        const url = typeof urlCandidate === "string" ? urlCandidate : undefined;
+
+        const idVal = rec["id"];
+        const id = typeof idVal === "string" || typeof idVal === "number" ? String(idVal) : undefined;
+
+        const durationRaw = rec["duration"];
+        const duration =
+          typeof durationRaw === "number"
+            ? durationRaw
+            : typeof durationRaw === "string" && durationRaw.trim() !== ""
+              ? Number(durationRaw)
+              : undefined;
+
+        const trackNumberRaw = rec["trackNumber"] ?? rec["track_number"];
+        const trackNumber =
+          typeof trackNumberRaw === "number"
+            ? trackNumberRaw
+            : typeof trackNumberRaw === "string" && trackNumberRaw.trim() !== ""
+              ? Number(trackNumberRaw)
+              : undefined;
+
+        const explicitRaw = rec["explicit"];
+        const explicit =
+          typeof explicitRaw === "boolean"
+            ? explicitRaw
+            : typeof explicitRaw === "string"
+              ? explicitRaw.toLowerCase() === "true"
+              : false;
+
+        return {
+          title: titleCandidate.trim(),
+          artist: artistLabel,
+          url,
+          id,
+          duration: typeof duration === "number" && Number.isFinite(duration) ? duration : undefined,
+          trackNumber: typeof trackNumber === "number" && Number.isFinite(trackNumber) ? trackNumber : undefined,
+          explicit,
+        };
+      };
+
+      const tracks = Array.isArray(data?.tracks)
+        ? data!.tracks.map((track) => normalizeTrack(track)).filter((t): t is TrackForPlaylist => Boolean(t))
+        : [];
+
+      setBinimumDetails({ artist: normalizedArtist, name: normalizedAlbum, tracks });
+      setYamsUrl(null);
+    } catch (err) {
+      console.error("Failed to load album tracks", err);
+    } finally {
+      setExternalLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }
+  };
+
+  // Play track from Binimum
+  const playTrack = async (track: TrackForPlaylist, index?: number) => {
+    try {
+      await player.playTrack(track.artist, track.title, track.id);
+      const resolvedIndex =
+        typeof index === "number"
+          ? index
+          : binimumDetails
+            ? binimumDetails.tracks.findIndex((t) => {
+                if (track.id && t.id && track.id === t.id) return true;
+                return t.title === track.title && t.artist === track.artist;
+              })
+            : -1;
+      setCurrentTrackIndex(resolvedIndex >= 0 ? resolvedIndex : null);
+    } catch (error) {
+      console.error("Failed to play track", error);
+      setCurrentTrackIndex(null);
+    }
+  };
+
+  // Handle adding track to playlist
+  const handleAddToPlaylist = async () => {
+    if (!drawerTrack || !selectedPlaylist) return;
+    await addToPlaylist({
+      playlist: selectedPlaylist,
+      artist: drawerTrack.artist,
+      track: drawerTrack.title,
+      checked: "TRUE",
+      liked: "TRUE",
+    });
   };
 
   return (
@@ -718,12 +457,11 @@ export function AlbumView({ entries }: AlbumViewProps) {
               <i className={showBookmarkedOnly ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"} aria-hidden />
               {showBookmarkedOnly ? "Showing bookmarked" : "Show bookmarked only"}
             </Button>
-            <span className="text-[11px] uppercase tracking-wide">
-              {bookmarkedIds.size} bookmarked
-            </span>
+            <span className="text-[11px] uppercase tracking-wide">{bookmarkedIds.size} bookmarked</span>
           </div>
         </div>
-        <div ref={listRef} className="flex flex-1 flex-col overflow-hidden">
+
+        <div ref={pagination.containerRef} className="flex flex-1 flex-col overflow-hidden">
           {filtered.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center text-sm text-muted-foreground">
               No albums match your filters yet.
@@ -735,212 +473,181 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 const rating = ratings[entry.id] ?? 0;
                 const isExternalLoading = externalLoading.has(entry.id);
                 const isBookmarked = bookmarkedIds.has(entry.id);
-                const nameParts = entry.name
-                  .split("-")
-                  .map((part) => part.trim())
-                  .filter(Boolean);
-                let albumTitle = entry.name;
-                let albumArtistLabel: string | null = null;
-                if (nameParts.length > 1) {
-                  albumTitle = nameParts.pop() ?? entry.name;
-                  albumArtistLabel = nameParts.join(" - ");
-                }
+                const { albumTitle, albumArtist } = deriveAlbumMeta(entry.name);
+
                 const cover = entry.coverUrl ? (
                   <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-border/70 bg-card md:h-20 md:w-20">
-                    <Image
-                      src={entry.coverUrl}
-                      alt={`Artwork for ${entry.name}`}
-                  fill
-                  className="object-cover"
-                  sizes="96px"
-                />
-              </div>
-            ) : (
-              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-border/70 bg-card text-muted-foreground md:h-20 md:w-20">
-                <i className="fa-solid fa-compact-disc text-xl" aria-hidden />
-              </div>
-            );
-            return (
-              <div
-                key={entry.id}
-                className="rounded-lg border border-border/60 bg-card/30 px-3 py-3 transition hover:bg-card/60"
-              >
-                <div className="flex items-center gap-3">
-                  {cover}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-1 text-sm">
-                        <h3 className="truncate text-base font-semibold text-foreground">{albumTitle}</h3>
-                        {albumArtistLabel && (
-                          <p className="truncate text-[13px] text-muted-foreground">{albumArtistLabel}</p>
-                        )}
-                        <div className="space-y-0.5 text-[11px] text-muted-foreground opacity-80">
-                          {entry.releaseDate && (
-                            <p>
-                              Released{" "}
-                              <span className="font-medium text-foreground/90">
-                                {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
-                              </span>
-                            </p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
-                            {entry.checked && (
-                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                Checked
-                              </span>
-                            )}
-                            {isBookmarked && (
-                              <Badge
-                                variant="secondary"
-                                className="border border-amber-200 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
-                              >
-                                Bookmarked
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-primary hover:text-primary"
-                          title="Preview tracks"
-                          onClick={() => handleOpenBinimum(entry)}
-                          disabled={isExternalLoading}
-                        >
-                          <i className="fa-solid fa-play" aria-hidden />
-                          <span className="sr-only">Preview tracks</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Search on YAMS.TF"
-                          onClick={() => handleOpenExternal(entry)}
-                          disabled={isExternalLoading}
-                        >
-                          <i className="fa-solid fa-magnifying-glass" aria-hidden />
-                          <span className="sr-only">Search YAMS.TF</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={clsx(isBookmarked && "text-amber-600 hover:text-amber-600")}
-                          aria-pressed={isBookmarked}
-                          title={isBookmarked ? "Remove bookmark" : "Bookmark album"}
-                          onClick={() => toggleBookmark(entry)}
-                        >
-                          <i className={isBookmarked ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"} aria-hidden />
-                          <span className="sr-only">{isBookmarked ? "Remove bookmark" : "Bookmark album"}</span>
-                        </Button>
-                        <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-pressed={liked}
-                            onClick={() => setOpenRatingForId((id) => (id === entry.id ? null : entry.id))}
-                            aria-haspopup="dialog"
-                            aria-expanded={openRatingForId === entry.id}
-                            title={rating ? `Rated ${rating}/5` : "Rate album"}
-                          >
-                            <i className={liked ? "fa-solid fa-heart" : "fa-regular fa-heart"} aria-hidden />
-                            <span className="sr-only">Rate album</span>
-                          </Button>
-                          {openRatingForId === entry.id && (
-                            <div
-                              role="dialog"
-                              aria-label="Rate album"
-                              className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-card p-2 shadow-md"
-                            >
-                              <div className="mb-2 text-xs text-muted-foreground">Rate this album</div>
-                              <div className="flex items-center justify-between">
-                                {[1, 2, 3, 4, 5].map((v) => (
-                                  <button
-                                    key={v}
-                                    type="button"
-                                    onClick={() => setRating(entry, v)}
-                                    className="p-1 text-lg text-foreground hover:text-primary"
-                                    aria-label={`Set rating ${v}`}
-                                  >
-                                    <i
-                                      className={v <= (rating || 0) ? "fa-solid fa-star" : "fa-regular fa-star"}
-                                      aria-hidden
-                                    />
-                                  </button>
-                                ))}
+                    <Image src={entry.coverUrl} alt={`Artwork for ${entry.name}`} fill className="object-cover" sizes="96px" />
+                  </div>
+                ) : (
+                  <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-border/70 bg-card text-muted-foreground md:h-20 md:w-20">
+                    <i className="fa-solid fa-compact-disc text-xl" aria-hidden />
+                  </div>
+                );
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="rounded-lg border border-border/60 bg-card/30 px-3 py-3 transition hover:bg-card/60"
+                  >
+                    <div className="flex items-center gap-3">
+                      {cover}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 space-y-1 text-sm">
+                            <h3 className="truncate text-base font-semibold text-foreground">{albumTitle}</h3>
+                            {albumArtist && <p className="truncate text-[13px] text-muted-foreground">{albumArtist}</p>}
+                            <div className="space-y-0.5 text-[11px] text-muted-foreground opacity-80">
+                              {entry.releaseDate && (
+                                <p>
+                                  Released{" "}
+                                  <span className="font-medium text-foreground/90">
+                                    {formatOrdinalLongDate(parseSheetDate(entry.releaseDate))}
+                                  </span>
+                                </p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="capitalize">Added {formatRelativeDate(entry.addedAt)}</span>
+                                {entry.checked && (
+                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Checked</span>
+                                )}
+                                {isBookmarked && (
+                                  <Badge variant="secondary" className="border border-amber-200 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                    Bookmarked
+                                  </Badge>
+                                )}
                               </div>
                             </div>
-                          )}
+                          </div>
+                          <div className="flex flex-shrink-0 items-center gap-1 text-muted-foreground">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-primary hover:text-primary"
+                              title="Preview tracks"
+                              onClick={() => handleOpenBinimum(entry)}
+                              disabled={isExternalLoading}
+                            >
+                              <i className="fa-solid fa-play" aria-hidden />
+                              <span className="sr-only">Preview tracks</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Search on YAMS.TF"
+                              onClick={() => handleOpenExternal(entry)}
+                              disabled={isExternalLoading}
+                            >
+                              <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                              <span className="sr-only">Search YAMS.TF</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={clsx(isBookmarked && "text-amber-600 hover:text-amber-600")}
+                              aria-pressed={isBookmarked}
+                              title={isBookmarked ? "Remove bookmark" : "Bookmark album"}
+                              onClick={() => toggleBookmark(entry)}
+                            >
+                              <i className={isBookmarked ? "fa-solid fa-bookmark" : "fa-regular fa-bookmark"} aria-hidden />
+                              <span className="sr-only">{isBookmarked ? "Remove bookmark" : "Bookmark album"}</span>
+                            </Button>
+                            <div className="relative" ref={openRatingForId === entry.id ? popoverRef : null}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-pressed={liked}
+                                onClick={() => setOpenRatingForId((id) => (id === entry.id ? null : entry.id))}
+                                aria-haspopup="dialog"
+                                aria-expanded={openRatingForId === entry.id}
+                                title={rating ? `Rated ${rating}/5` : "Rate album"}
+                              >
+                                <i className={liked ? "fa-solid fa-heart" : "fa-regular fa-heart"} aria-hidden />
+                                <span className="sr-only">Rate album</span>
+                              </Button>
+                              {openRatingForId === entry.id && (
+                                <div
+                                  role="dialog"
+                                  aria-label="Rate album"
+                                  className="absolute right-0 z-10 mt-2 w-44 rounded-md border border-border bg-card p-2 shadow-md"
+                                >
+                                  <div className="mb-2 text-xs text-muted-foreground">Rate this album</div>
+                                  <div className="flex items-center justify-between">
+                                    {[1, 2, 3, 4, 5].map((v) => (
+                                      <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() => setRating(entry, v)}
+                                        className="p-1 text-lg text-foreground hover:text-primary"
+                                        aria-label={`Set rating ${v}`}
+                                      >
+                                        <i className={v <= (rating || 0) ? "fa-solid fa-star" : "fa-regular fa-star"} aria-hidden />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-rose-600 hover:text-rose-700"
+                              onClick={() => handleDismiss(entry)}
+                              title="Dismiss album"
+                            >
+                              <i className="fa-solid fa-xmark" aria-hidden />
+                              <span className="sr-only">Dismiss album</span>
+                            </Button>
+                          </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-rose-600 hover:text-rose-700"
-                          onClick={() => handleDismiss(entry)}
-                          title="Dismiss album"
-                        >
-                          <i className="fa-solid fa-xmark" aria-hidden />
-                          <span className="sr-only">Dismiss album</span>
-                        </Button>
-                      </div>
-                    </div>
-                    {(rating || liked) && (
-                      <div className="text-xs text-muted-foreground">
-                        {rating ? (
-                          <span className="flex items-center gap-1 text-foreground">
-                            {[1, 2, 3, 4, 5].map((v) => (
-                              <i key={v} className={v <= rating ? "fa-solid fa-star" : "fa-regular fa-star"} aria-hidden />
-                            ))}
-                            <span className="ml-1 text-muted-foreground">{rating}/5</span>
-                          </span>
-                        ) : (
-                          <span>You like this</span>
+                        {(rating || liked) && (
+                          <div className="text-xs text-muted-foreground">
+                            {rating ? (
+                              <span className="flex items-center gap-1 text-foreground">
+                                {[1, 2, 3, 4, 5].map((v) => (
+                                  <i key={v} className={v <= rating ? "fa-solid fa-star" : "fa-regular fa-star"} aria-hidden />
+                                ))}
+                                <span className="ml-1 text-muted-foreground">{rating}/5</span>
+                              </span>
+                            ) : (
+                              <span>You like this</span>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
           )}
         </div>
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
-          <div>
-            {filtered.length === 0 ? null : (
+
+        {/* Pagination */}
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between gap-2 pt-2 text-sm text-muted-foreground">
+            <div>
               <span>
-                {Math.min(start + 1, filtered.length)}-{Math.min(end, filtered.length)} of {filtered.length}
+                {Math.min(pagination.startIndex + 1, filtered.length)}-{Math.min(pagination.endIndex, filtered.length)}{" "}
+                of {filtered.length}
               </span>
-            )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={pagination.prevPage} disabled={pagination.currentPage <= 1}>
+                Prev
+              </Button>
+              <span>
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </span>
+              <Button variant="ghost" size="sm" onClick={pagination.nextPage} disabled={pagination.currentPage >= pagination.totalPages}>
+                Next
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              Prev
-            </Button>
-            <span>
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+        )}
       </div>
-      {/* Right pane: show Binimum details (preferred) or external preview */}
+
+      {/* Right pane: Binimum details or YAMS external viewer */}
       <div className="relative hidden md:flex md:w-1/2 h-full flex-col border-l border-border/60 overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 pb-24">
           {binimumDetails ? (
@@ -949,108 +656,85 @@ export function AlbumView({ entries }: AlbumViewProps) {
                 <h2 className="text-xl font-semibold">{binimumDetails.name}</h2>
                 <p className="text-sm text-muted-foreground">{binimumDetails.artist}</p>
               </div>
-              {!STREAMING_ENABLED && (
+              {!FEATURES.streamingEnabled && (
                 <p className="rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
                   Streaming previews are temporarily unavailable due to API changes.
                 </p>
               )}
-            {binimumDetails.tracks.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-card/30 p-4 text-sm text-muted-foreground">
-                No tracks available for this album.
-              </p>
-            ) : (
-              <div className="rounded-lg border border-border/70 bg-card/40">
-                <div className="divide-y divide-border/60">
-                  {binimumDetails.tracks.map((t, idx) => {
-                    const isActive = currentTrackIndex === idx;
-                    const rowNumber = idx + 1;
-                    const durationLabel =
-                      typeof t.duration === "number" && Number.isFinite(t.duration) ? fmtTime(t.duration) : null;
-                    return (
-                      <div
-                        key={`${t.id ?? t.title}-${idx}`}
-                        className={clsx(
-                          "group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors",
-                          "hover:bg-card/70",
-                          isActive && "border border-primary/50 bg-primary/10",
-                        )}
-                        onClick={STREAMING_ENABLED ? () => playTrack(t, idx) : undefined}
-                        role={STREAMING_ENABLED ? "button" : undefined}
-                        tabIndex={STREAMING_ENABLED ? 0 : -1}
-                        aria-disabled={!STREAMING_ENABLED}
-                        onKeyDown={
-                          STREAMING_ENABLED
-                            ? (e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  playTrack(t, idx);
-                                }
+              {binimumDetails.tracks.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border bg-card/30 p-4 text-sm text-muted-foreground">
+                  No tracks available for this album.
+                </p>
+              ) : (
+                <div className="rounded-lg border border-border/70 bg-card/40">
+                  <div className="divide-y divide-border/60">
+                    {binimumDetails.tracks.map((t, idx) => {
+                      const isActive = currentTrackIndex === idx;
+                      return (
+                        <div
+                          key={`${t.id ?? t.title}-${idx}`}
+                          className={clsx(
+                            "group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-card/70",
+                            isActive && "border border-primary/50 bg-primary/10"
+                          )}
+                          onClick={FEATURES.streamingEnabled ? () => playTrack(t, idx) : undefined}
+                          role={FEATURES.streamingEnabled ? "button" : undefined}
+                          tabIndex={FEATURES.streamingEnabled ? 0 : -1}
+                        >
+                          <div className="w-6 text-xs font-mono text-muted-foreground">{idx + 1}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate font-medium text-foreground">{t.title}</span>
+                              {t.explicit && (
+                                <Badge variant="secondary" className="h-5 px-1.5 text-[10px] uppercase tracking-wide">
+                                  Explicit
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="truncate">{t.artist}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-primary hover:text-primary"
+                              title={FEATURES.streamingEnabled ? "Play preview" : "Streaming temporarily unavailable"}
+                              onClick={
+                                FEATURES.streamingEnabled
+                                  ? (e) => {
+                                      e.stopPropagation();
+                                      playTrack(t, idx);
+                                    }
+                                  : undefined
                               }
-                            : undefined
-                        }
-                      >
-                        <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate font-medium text-foreground">{t.title}</span>
-                            {t.explicit && (
-                              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] uppercase tracking-wide">
-                                Explicit
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="truncate">{t.artist}</span>
-                            {durationLabel && (
-                              <>
-                                <span className="text-muted-foreground">&middot;</span>
-                                <span>{durationLabel}</span>
-                              </>
-                            )}
+                              disabled={!FEATURES.streamingEnabled || player.isLoading}
+                            >
+                              <i className="fa-solid fa-play" aria-hidden />
+                              <span className="sr-only">Play</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Add to playlist"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDrawerTrack({ title: t.title, artist: t.artist });
+                                setSelectedPlaylist(null);
+                                setSubmitError(null);
+                              }}
+                            >
+                              <i className="fa-solid fa-plus" aria-hidden />
+                              <span className="sr-only">Add to playlist</span>
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-primary hover:text-primary"
-                            title={
-                              STREAMING_ENABLED ? "Play preview" : "Streaming temporarily unavailable"
-                            }
-                            onClick={
-                              STREAMING_ENABLED
-                                ? (e) => {
-                                    e.stopPropagation();
-                                    playTrack(t, idx);
-                                  }
-                                : undefined
-                            }
-                            disabled={!STREAMING_ENABLED || audioLoading}
-                          >
-                            <i className="fa-solid fa-play" aria-hidden />
-                            <span className="sr-only">Play</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Add to playlist"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDrawerTrack({ title: t.title, artist: t.artist, url: t.url, id: t.id });
-                              setSelectedPlaylist(null);
-                              setSubmitError(null);
-                            }}
-                          >
-                            <i className="fa-solid fa-plus" aria-hidden />
-                            <span className="sr-only">Add to playlist</span>
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </div>
           ) : yamsUrl ? (
             <iframe title="External" src={yamsUrl} className="h-full w-full" />
@@ -1058,282 +742,52 @@ export function AlbumView({ entries }: AlbumViewProps) {
             <div className="grid h-full place-items-center text-xs text-muted-foreground">No preview</div>
           )}
         </div>
+
         {/* Sticky bottom audio bar */}
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-          <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-2">
-            {STREAMING_ENABLED ? (
-              audioInfo ? (
-                <>
-                  <Button
-                    size="icon"
-                    variant="secondary"
-                    onClick={togglePlay}
-                    aria-label={isPlaying ? "Pause" : "Play"}
-                    title={isPlaying ? "Pause" : "Play"}
-                  >
-                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    aria-label="Add"
-                    title="Add"
-                    onClick={() => {
-                      if (audioInfo) {
-                        setDrawerTrack({ title: audioInfo.title, artist: audioInfo.artist });
-                        setSelectedPlaylist(null);
-                        setSubmitError(null);
-                      }
-                    }}
-                  >
-                    <i className="fa-solid fa-plus" aria-hidden />
-                  </Button>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{audioInfo.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{audioInfo.artist}</p>
-                  </div>
-                  <div className="flex w-48 items-center gap-2 md:w-72">
-                    <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(currentTime)}</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={duration || 0}
-                      step={1}
-                      value={Math.min(currentTime, duration || 0)}
-                      onChange={(e) => onSeek(Number(e.target.value))}
-                      className="h-1 w-full cursor-pointer appearance-none rounded bg-border accent-foreground"
-                    />
-                    <span className="text-[11px] tabular-nums text-muted-foreground">{fmtTime(duration)}</span>
-                  </div>
-                  <audio ref={audioRef} src={audioInfo.url} className="hidden" />
-                </>
-              ) : (
-                <div className="text-xs text-muted-foreground">Select a track to play</div>
-              )
+          {FEATURES.streamingEnabled ? (
+            player.audioInfo ? (
+              <AudioPlayerBar
+                audioInfo={player.audioInfo}
+                isPlaying={player.isPlaying}
+                audioRef={player.audioRef}
+                onTogglePlay={player.togglePlay}
+                onSeek={player.seek}
+                currentTime={player.currentTime}
+                duration={player.duration}
+                onAddToPlaylist={() => {
+                  if (player.audioInfo) {
+                    setDrawerTrack({ title: player.audioInfo.title, artist: player.audioInfo.artist });
+                    setSelectedPlaylist(null);
+                    setSubmitError(null);
+                  }
+                }}
+              />
             ) : (
-              <div className="text-xs text-muted-foreground">
-                Streaming previews are temporarily unavailable due to API changes.
-              </div>
-            )}
-          </div>
+              <div className="px-4 py-2 text-xs text-muted-foreground">Select a track to play</div>
+            )
+          ) : (
+            <div className="px-4 py-2 text-xs text-muted-foreground">
+              Streaming previews are temporarily unavailable due to API changes.
+            </div>
+          )}
         </div>
       </div>
-      {drawerTrack && (
-        <div className="fixed inset-0 z-50 flex">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            onClick={() => setDrawerTrack(null)}
-            aria-hidden
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="add-to-playlist-title"
-            className="relative ml-auto flex h-full w-full max-w-md flex-col gap-6 bg-background p-6 shadow-xl"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 id="add-to-playlist-title" className="text-xl font-semibold">
-                  Add to playlist
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {drawerTrack.title}
-                  <span className="px-2 text-muted-foreground">-</span>
-                  {drawerTrack.artist}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setDrawerTrack(null)}>
-                <i className="fa-solid fa-xmark" aria-hidden />
-                <span className="sr-only">Close</span>
-              </Button>
-            </div>
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-foreground">Select a playlist</p>
-              <div className="grid max-h-[60vh] gap-2 overflow-y-auto pr-1">
-                {PLAYLIST_OPTIONS.map((option) => {
-                  const selected = selectedPlaylist === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setSelectedPlaylist(option)}
-                      className={clsx(
-                        "flex w-full items-center justify-between rounded-md border p-3 text-left text-sm transition",
-                        selected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-card/60 hover:border-primary/60 hover:bg-card",
-                      )}
-                    >
-                      <span className="font-medium">{option.trim()}</span>
-                      {selected ? (
-                        <i className="fa-solid fa-circle-check text-primary-foreground" aria-hidden />
-                      ) : (
-                        <i className="fa-regular fa-circle" aria-hidden />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            {submitError && (
-              <p className="rounded-md border border-rose-300/60 bg-rose-50 p-2 text-sm text-rose-900">
-                {submitError}
-              </p>
-            )}
-            <div className="mt-auto flex items-center justify-end gap-2 border-t border-border/60 pt-4">
-              <Button variant="ghost" onClick={() => setDrawerTrack(null)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddToPlaylist} disabled={!selectedPlaylist || isSubmitting}>
-                {isSubmitting ? "Adding..." : "Add to playlist"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Mobile details or external viewer below content */}
-      {binimumDetails ? (
-        <div className="relative md:hidden mt-4 p-3">
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-lg font-semibold">{binimumDetails.name}</h2>
-              <p className="text-sm text-muted-foreground">{binimumDetails.artist}</p>
-            </div>
-            {!STREAMING_ENABLED && (
-              <p className="rounded-md border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
-                Streaming previews are temporarily unavailable due to API changes.
-              </p>
-            )}
-            {STREAMING_ENABLED && audioInfo && (
-              <div className="sticky bottom-2 z-50 rounded-md border border-border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75">
-                <div className="flex items-center gap-3">
-                  <Button
-                    size="icon"
-                    variant="secondary"
-                    onClick={togglePlay}
-                    aria-label={isPlaying ? "Pause" : "Play"}
-                    title={isPlaying ? "Pause" : "Play"}
-                  >
-                    <i className={isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play"} aria-hidden />
-                  </Button>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{audioInfo.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{audioInfo.artist}</p>
-                  </div>
-                  <audio ref={audioRef} src={audioInfo.url} className="hidden" />
-                </div>
-              </div>
-            )}
-            {binimumDetails.tracks.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-card/30 p-3 text-sm text-muted-foreground">
-                No tracks available for this album.
-              </p>
-            ) : (
-              <div className="rounded-lg border border-border/70 bg-card/40">
-                <div className="divide-y divide-border/60">
-                  {binimumDetails.tracks.map((t, idx) => {
-                    const isActive = currentTrackIndex === idx;
-                    const rowNumber = idx + 1;
-                    const durationLabel =
-                      typeof t.duration === "number" && Number.isFinite(t.duration) ? fmtTime(t.duration) : null;
-                    return (
-                      <div
-                        key={`${t.id ?? t.title}-mobile-${idx}`}
-                        className={clsx(
-                          "group flex flex-wrap items-center gap-3 px-3 py-2 text-sm transition-colors",
-                          "hover:bg-card/70",
-                          isActive && "border border-primary/50 bg-primary/10",
-                        )}
-                        onClick={STREAMING_ENABLED ? () => playTrack(t, idx) : undefined}
-                        role={STREAMING_ENABLED ? "button" : undefined}
-                        tabIndex={STREAMING_ENABLED ? 0 : -1}
-                        aria-disabled={!STREAMING_ENABLED}
-                        onKeyDown={
-                          STREAMING_ENABLED
-                            ? (e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  playTrack(t, idx);
-                                }
-                              }
-                            : undefined
-                        }
-                      >
-                        <div className="w-6 text-xs font-mono text-muted-foreground">{rowNumber}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate font-medium text-foreground">{t.title}</span>
-                            {t.explicit && (
-                              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] uppercase tracking-wide">
-                                Explicit
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="truncate">{t.artist}</span>
-                            {durationLabel && (
-                              <>
-                                <span className="text-muted-foreground">&middot;</span>
-                                <span>{durationLabel}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-primary hover:text-primary"
-                            title={
-                              STREAMING_ENABLED ? "Play preview" : "Streaming temporarily unavailable"
-                            }
-                            onClick={
-                              STREAMING_ENABLED
-                                ? (e) => {
-                                    e.stopPropagation();
-                                    playTrack(t, idx);
-                                  }
-                                : undefined
-                            }
-                            disabled={!STREAMING_ENABLED || audioLoading}
-                          >
-                            <i className="fa-solid fa-play" aria-hidden />
-                            <span className="sr-only">Play</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Add to playlist"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDrawerTrack({ title: t.title, artist: t.artist, url: t.url, id: t.id });
-                              setSelectedPlaylist(null);
-                              setSubmitError(null);
-                            }}
-                          >
-                            <i className="fa-solid fa-plus" aria-hidden />
-                            <span className="sr-only">Add to playlist</span>
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        yamsUrl && (
-          <div className="relative md:hidden mt-4">
-            <div className="h-[60vh] w-full">
-              <iframe title="External" src={yamsUrl} className="h-full w-full" />
-            </div>
-          </div>
-        )
-      )}
+
+      {/* Playlist drawer */}
+      <PlaylistDrawer
+        track={drawerTrack}
+        selectedPlaylist={selectedPlaylist}
+        onSelectPlaylist={setSelectedPlaylist}
+        onClose={() => {
+          setDrawerTrack(null);
+          setSelectedPlaylist(null);
+          setSubmitError(null);
+        }}
+        onSubmit={handleAddToPlaylist}
+        isSubmitting={isSubmitting}
+        error={submitError}
+      />
     </div>
   );
 }
-
-
