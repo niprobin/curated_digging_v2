@@ -30,4 +30,10 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "fa-solid fa-plus",
     description: "Send new albums or songs to your workflow.",
   },
+  {
+    href: "/search-webhook",
+    label: "Search",
+    icon: "fa-solid fa-search",
+    description: "Search using webhook endpoint.",
+  },
 ];
